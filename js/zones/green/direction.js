@@ -4,6 +4,7 @@ function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (k === "class") node.className = v;
+    else if (k === "html") node.innerHTML = v;
     else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
     else node.setAttribute(k, v);
   }
@@ -15,66 +16,131 @@ function el(tag, attrs = {}, children = []) {
 }
 const nowISO = () => new Date().toISOString();
 
-const KEY = "praxis_direction_today";
+const KEY = "praxis_direction_today_v2";
+
+const PLANS = [
+  {
+    id: "stability",
+    title: "Stability Day",
+    sub: "Lower intensity and stay steady",
+    steps: [
+      "Calm Me Down (2 min)",
+      "Move Forward: Reset Your Body (2 min)",
+      "One small maintenance task (10 min)"
+    ],
+    primary: { label: "Start Calm", to: "#/yellow/calm" },
+    secondary: { label: "Move Forward", to: "#/green/move" }
+  },
+  {
+    id: "maintenance",
+    title: "Maintenance Day",
+    sub: "Keep life from sliding backward",
+    steps: [
+      "Move Forward: Make One Area Better (10 min)",
+      "Today’s Plan: write 3 steps",
+      "Complete the easiest step first"
+    ],
+    primary: { label: "Open Today’s Plan", to: "#/green/today" },
+    secondary: { label: "Move Forward", to: "#/green/move" }
+  },
+  {
+    id: "progress",
+    title: "Progress Day",
+    sub: "Do one meaningful thing",
+    steps: [
+      "Move Forward: One Useful Task (25 min)",
+      "Repeat once if energy is there",
+      "Stop when timer ends"
+    ],
+    primary: { label: "Start 25 min", to: "#/green/move" },
+    secondary: { label: "Focus Sprint", to: "#/green/focus" }
+  },
+  {
+    id: "recovery",
+    title: "Recovery Day",
+    sub: "Heal + protect the future you",
+    steps: [
+      "Calm Me Down (2 min)",
+      "Short movement (5 min)",
+      "Write one sentence in Clarify"
+    ],
+    primary: { label: "Start Calm", to: "#/yellow/calm" },
+    secondary: { label: "Clarify", to: "#/reflect" }
+  }
+];
 
 export function renderDirection() {
   const wrap = el("div", { class: "flowShell" });
-
-  function setDirection(kind) {
-    try { localStorage.setItem(KEY, kind); } catch {}
-    appendLog({ kind: "direction", when: nowISO(), direction: kind });
-    rerender("picked", kind);
-  }
 
   function header() {
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["Choose Today’s Direction"]),
-        el("p", { class: "p" }, ["Pick a lane for today."]),
+        el("p", { class: "p" }, ["Tap one. You’ll get a simple plan immediately."]),
       ]),
+      // Reset button hidden by CSS; safe to keep
       el("div", { class: "flowMeta" }, [
         el("button", { class: "linkBtn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
       ])
     ]);
   }
 
-  function chooser() {
-    return el("div", { class: "flowShell" }, [
-      el("div", { class: "badge" }, ["You can change this later."]),
-      el("p", { class: "p" }, ["Which one fits today best?"]),
-      el("div", { class: "btnRow" }, [
-        el("button", { class: "btn btnPrimary", type: "button", onClick: () => setDirection("Stability") }, ["Stability"]),
-        el("button", { class: "btn", type: "button", onClick: () => setDirection("Maintenance") }, ["Maintenance"]),
-        el("button", { class: "btn", type: "button", onClick: () => setDirection("Progress") }, ["Progress"]),
-        el("button", { class: "btn", type: "button", onClick: () => setDirection("Recovery") }, ["Recovery"]),
+  function saveChoice(planId) {
+    try { localStorage.setItem(KEY, planId); } catch {}
+    appendLog({ kind: "direction", when: nowISO(), direction: planId });
+  }
+
+  function planCard(p) {
+    return el("button", {
+      class: "actionTile",
+      type: "button",
+      onClick: () => { saveChoice(p.id); showPlan(p); }
+    }, [
+      el("div", { class: "tileTop" }, [
+        el("div", {}, [
+          el("div", { class: "tileTitle" }, [p.title]),
+          el("div", { class: "tileSub" }, [p.sub]),
+        ]),
+        el("div", { class: "zoneDot dotGreen" }, []),
       ]),
-      el("p", { class: "small" }, ["This sets the shape of your day, not a schedule."]),
+      el("p", { class: "tileHint" }, ["Tap to choose"]),
     ]);
   }
 
-  function picked(kind) {
-    return el("div", { class: "flowShell" }, [
-      el("div", { class: "badge" }, [`Today is a ${kind} day.`]),
-      el("p", { class: "p" }, ["Here’s a simple version of today:"]),
-      el("div", { class: "btnRow" }, [
-        el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/green/move") }, ["Move Forward"]),
-        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/today") }, ["Open Today’s Plan"]),
-      ]),
-      el("div", { class: "btnRow" }, [
-        el("button", { class: "btn", type: "button", onClick: () => rerender("idle") }, ["Change direction"]),
-        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
-      ]),
-    ]);
-  }
-
-  function rerender(mode, kind) {
+  function showPlan(p) {
     wrap.innerHTML = "";
     wrap.appendChild(header());
+
     wrap.appendChild(el("div", { class: "card cardPad" }, [
-      mode === "picked" ? picked(kind) : chooser()
+      el("div", { class: "badge" }, [`Selected: ${p.title}`]),
+      el("p", { class: "p" }, [p.sub]),
+      el("div", { class: "hr" }, []),
+      el("h2", { class: "h2" }, ["Today’s simple plan"]),
+      ...p.steps.map(s => el("div", { class: "p", style: "margin-top:6px" }, ["• " + s])),
+      el("div", { class: "btnRow" }, [
+        el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = p.primary.to) }, [p.primary.label]),
+        el("button", { class: "btn", type: "button", onClick: () => (location.hash = p.secondary.to) }, [p.secondary.label]),
+      ]),
+      el("div", { class: "btnRow" }, [
+        el("button", { class: "btn", type: "button", onClick: () => rerenderList() }, ["Pick a different direction"]),
+        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
+      ]),
+      el("p", { class: "small", style: "margin-top:8px" }, ["Rule: stop when the timer ends. Don’t expand the mission."]),
     ]));
   }
 
-  rerender("idle");
+  function rerenderList() {
+    wrap.innerHTML = "";
+    wrap.appendChild(header());
+
+    wrap.appendChild(el("div", { class: "card cardPad" }, [
+      el("div", { class: "badge" }, ["Pick a lane"]),
+      el("p", { class: "small" }, ["This is not a schedule. It’s a direction."]),
+    ]));
+
+    wrap.appendChild(el("div", { class: "flowShell" }, PLANS.map(planCard)));
+  }
+
+  rerenderList();
   return wrap;
 }
