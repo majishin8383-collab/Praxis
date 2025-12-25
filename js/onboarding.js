@@ -1,4 +1,5 @@
-const BUILD = "OB-1";
+const BUILD = "OB-2";
+const KEY_DONE = "praxis_onboarding_done";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -12,6 +13,14 @@ function el(tag, attrs = {}, children = []) {
     node.appendChild(typeof child === "string" ? document.createTextNode(child) : child);
   }
   return node;
+}
+
+function markDone() {
+  try {
+    localStorage.setItem(KEY_DONE, "1");
+  } catch {
+    // ignore (private mode / storage blocked)
+  }
 }
 
 export function renderOnboarding() {
@@ -52,6 +61,8 @@ export function renderOnboarding() {
 
   function card() {
     const s = steps[i];
+    const isLast = i === steps.length - 1;
+
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, [`Step ${i + 1} of ${steps.length}`]),
       el("h2", { class: "h2" }, [s.title]),
@@ -70,12 +81,25 @@ export function renderOnboarding() {
           onClick: () => { i = Math.max(0, i - 1); rerender(); }
         }, ["Back"]),
         el("button", {
-          class: "btn",
+          class: isLast ? "btn btnPrimary" : "btn",
           type: "button",
-          onClick: () => { i = Math.min(steps.length - 1, i + 1); rerender(); }
-        }, [i === steps.length - 1 ? "Done" : "Next"]),
-      ])
-    ]);
+          onClick: () => {
+            if (isLast) {
+              markDone();
+              location.hash = "#/home";
+              return;
+            }
+            i = Math.min(steps.length - 1, i + 1);
+            rerender();
+          }
+        }, [isLast ? "Finish" : "Next"]),
+      ]),
+      isLast
+        ? el("p", { class: "small", style: "margin-top:10px" }, [
+            "Finish will save this as completed. You can replay anytime."
+          ])
+        : null
+    ].filter(Boolean));
   }
 
   function rerender() {
