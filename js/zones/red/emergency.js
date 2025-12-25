@@ -1,6 +1,7 @@
 import { appendLog } from "../../storage.js";
 
-const BUILD = "EM-2";
+const BUILD = "EM-3";
+const KEY_LAST_EMERGENCY = "praxis_last_emergency_ts";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -18,6 +19,18 @@ function el(tag, attrs = {}, children = []) {
 
 const nowISO = () => new Date().toISOString();
 
+function rememberEmergencyOpened() {
+  // ✅ sessionStorage = immediate + reliable
+  try {
+    sessionStorage.setItem(KEY_LAST_EMERGENCY, String(Date.now()));
+  } catch {}
+
+  // ✅ also log for History/analytics if available
+  try {
+    appendLog({ kind: "emergency_open", when: nowISO() });
+  } catch {}
+}
+
 function go(href) {
   window.location.href = href;
 }
@@ -27,17 +40,8 @@ function open(url) {
   if (!w) window.location.href = url;
 }
 
-function logOpen() {
-  try {
-    appendLog({ kind: "emergency_open", when: nowISO() });
-  } catch {
-    // ignore
-  }
-}
-
 export function renderEmergency() {
-  // ✅ log as soon as the screen renders
-  logOpen();
+  rememberEmergencyOpened();
 
   const wrap = el("div", { class: "flowShell" });
 
