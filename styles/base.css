@@ -26,29 +26,35 @@ body{
   position:relative;
 }
 
-/* ✅ Seam-proof background layer (no hard transparent cutoff) */
+/* ✅ seam-free gradient layer */
 body::before{
   content:"";
   position:fixed;
   inset:0;
   pointer-events:none;
   z-index:-1;
+
   background:
     radial-gradient(1200px 800px at 20% -10%,
-      rgba(86,240,139,.18) 0%,
-      rgba(86,240,139,.10) 28%,
-      rgba(86,240,139,.05) 52%,
-      rgba(86,240,139,0) 78%),
+      rgba(86,240,139,.20) 0%,
+      rgba(86,240,139,.12) 26%,
+      rgba(86,240,139,.06) 48%,
+      rgba(86,240,139,.02) 62%,
+      rgba(86,240,139,0) 80%),
+
     radial-gradient(900px 600px at 90% 10%,
       rgba(255,216,74,.14) 0%,
       rgba(255,216,74,.08) 34%,
       rgba(255,216,74,.04) 56%,
-      rgba(255,216,74,0) 80%),
+      rgba(255,216,74,.01) 66%,
+      rgba(255,216,74,0) 82%),
+
     radial-gradient(900px 600px at 50% 120%,
       rgba(255,77,77,.12) 0%,
       rgba(255,77,77,.06) 40%,
       rgba(255,77,77,.03) 60%,
-      rgba(255,77,77,0) 84%);
+      rgba(255,77,77,.01) 70%,
+      rgba(255,77,77,0) 86%);
 }
 
 a{color:inherit}
