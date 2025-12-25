@@ -1,4 +1,6 @@
-const BUILD = "EM-1";
+import { appendLog } from "../../storage.js";
+
+const BUILD = "EM-2";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -14,18 +16,29 @@ function el(tag, attrs = {}, children = []) {
   return node;
 }
 
+const nowISO = () => new Date().toISOString();
+
 function go(href) {
-  // for tel:, sms:, and external links
   window.location.href = href;
 }
 
 function open(url) {
-  // external links: try new tab, fall back to same tab
   const w = window.open(url, "_blank", "noopener,noreferrer");
   if (!w) window.location.href = url;
 }
 
+function logOpen() {
+  try {
+    appendLog({ kind: "emergency_open", when: nowISO() });
+  } catch {
+    // ignore
+  }
+}
+
 export function renderEmergency() {
+  // ✅ log as soon as the screen renders
+  logOpen();
+
   const wrap = el("div", { class: "flowShell" });
 
   const header = el("div", { class: "flowHeader" }, [
