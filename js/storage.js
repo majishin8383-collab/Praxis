@@ -1,4 +1,4 @@
-const KEY = "praxis_v1_log";
+const KEY = "praxis_log_v1";
 
 export function readLog() {
   try {
@@ -14,9 +14,9 @@ export function readLog() {
 export function appendLog(entry) {
   const log = readLog();
   log.unshift(entry);
-  localStorage.setItem(KEY, JSON.stringify(log.slice(0, 200)));
-}
-
-export function clearLog() {
-  localStorage.removeItem(KEY);
+  try {
+    localStorage.setItem(KEY, JSON.stringify(log.slice(0, 300)));
+  } catch {
+    // ignore storage failures (private mode / quota)
+  }
 }
