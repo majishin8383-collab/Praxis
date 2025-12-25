@@ -33,9 +33,7 @@ export function setMain(viewNode) {
   if (viewNode) main.appendChild(viewNode);
 }
 
-function getTiles() {
-  const done = onboardingDone();
-
+function baseTiles() {
   return [
     // Yellow zone
     {
@@ -84,7 +82,6 @@ function getTiles() {
       dot: "dotGreen",
       to: "#/green/direction",
     },
-
     {
       title: "Today’s Plan",
       sub: "Three steps only",
@@ -92,7 +89,6 @@ function getTiles() {
       dot: "dotGreen",
       to: "#/green/today",
     },
-
     {
       title: "Clarify the Next Move",
       sub: "Lock a move",
@@ -100,17 +96,6 @@ function getTiles() {
       dot: "dotGreen",
       to: "#/reflect",
     },
-
-    // Onboarding (relabels after completion)
-    {
-      title: done ? "Quick Start (replay)" : "How Praxis Works",
-      sub: done ? "Replay anytime" : "20 seconds",
-      hint: done ? "Tap → timer → lock a move → do it." : "Tap → timer → lock a move → do it.",
-      dot: "dotGreen",
-      to: "#/onboarding",
-    },
-
-    // History
     {
       title: "History",
       sub: "See your momentum",
@@ -119,6 +104,37 @@ function getTiles() {
       to: "#/history",
     },
   ];
+}
+
+function onboardingTile(done) {
+  return {
+    title: done ? "Quick Start (replay)" : "How Praxis Works",
+    sub: done ? "Replay anytime" : "Start here",
+    hint: "Tap → timer → lock a move → do it.",
+    dot: "dotGreen",
+    to: "#/onboarding",
+  };
+}
+
+function getTiles() {
+  const done = onboardingDone();
+  const tiles = baseTiles();
+  const onboard = onboardingTile(done);
+
+  // 🔑 First-time users: onboarding goes FIRST
+  if (!done) {
+    return [onboard, ...tiles];
+  }
+
+  // Returning users: onboarding stays near bottom (before History)
+  const historyIndex = tiles.findIndex(t => t.to === "#/history");
+  if (historyIndex >= 0) {
+    tiles.splice(historyIndex, 0, onboard);
+  } else {
+    tiles.push(onboard);
+  }
+
+  return tiles;
 }
 
 function tileButton(t) {
