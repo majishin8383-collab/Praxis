@@ -63,6 +63,11 @@
   cursor:pointer;
 }
 
+/* ✅ REMOVE duplicate Reset buttons inside screens */
+.flowHeader .flowMeta{
+  display:none;
+}
+
 .flowHeader{
   display:flex;
   justify-content:space-between;
@@ -70,8 +75,6 @@
   gap:12px;
   margin-bottom:12px;
 }
-
-.flowMeta{display:flex; gap:10px; align-items:center}
 
 .flowShell{display:flex; flex-direction:column; gap:10px}
 
