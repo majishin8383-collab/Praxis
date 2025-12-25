@@ -90,7 +90,16 @@ const TILES = [
     to: "#/reflect",
   },
 
-  // ✅ NEW: History
+  // ✅ NEW: Onboarding
+  {
+    title: "How Praxis Works",
+    sub: "20 seconds",
+    hint: "Tap → timer → lock a move → do it.",
+    dot: "dotGreen",
+    to: "#/onboarding",
+  },
+
+  // History
   {
     title: "History",
     sub: "See your momentum",
