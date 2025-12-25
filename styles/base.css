@@ -20,10 +20,24 @@ html,body{height:100%}
 body{
   margin:0;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-  background: radial-gradient(1200px 800px at 20% -10%, rgba(86,240,139,.14), transparent 40%),
-              radial-gradient(900px 600px at 90% 10%, rgba(255,216,74,.12), transparent 40%),
-              radial-gradient(900px 600px at 50% 120%, rgba(255,77,77,.10), transparent 50%),
-              var(--bg);
+  /* ✅ smoother fades — removes “hard line” seam */
+  background:
+    radial-gradient(1200px 800px at 20% -10%,
+      rgba(86,240,139,.16) 0%,
+      rgba(86,240,139,.10) 22%,
+      rgba(86,240,139,.05) 40%,
+      transparent 68%),
+    radial-gradient(900px 600px at 90% 10%,
+      rgba(255,216,74,.14) 0%,
+      rgba(255,216,74,.08) 28%,
+      rgba(255,216,74,.04) 48%,
+      transparent 74%),
+    radial-gradient(900px 600px at 50% 120%,
+      rgba(255,77,77,.12) 0%,
+      rgba(255,77,77,.06) 35%,
+      rgba(255,77,77,.03) 55%,
+      transparent 78%),
+    var(--bg);
   color:var(--text);
 }
 
