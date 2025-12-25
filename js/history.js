@@ -1,5 +1,7 @@
 import { readLog } from "./storage.js";
 
+const BUILD = "H-3";
+
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -32,11 +34,9 @@ function startOfToday() {
   d.setHours(0, 0, 0, 0);
   return d.getTime();
 }
-
 function daysAgoMs(days) {
   return Date.now() - days * 24 * 60 * 60 * 1000;
 }
-
 function formatDay(iso) {
   try {
     const d = new Date(iso);
@@ -48,16 +48,14 @@ function formatDay(iso) {
 
 export function renderHistory() {
   const wrap = el("div", { class: "flowShell" });
-
-  const state = {
-    filter: "today", // "today" | "7d" | "all"
-  };
+  const state = { filter: "today" }; // today | 7d | all
 
   function header() {
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["History"]),
         el("p", { class: "p" }, ["Recent actions. Proof of movement."]),
+        el("div", { class: "small" }, [`Build ${BUILD}`]),
       ]),
       el("div", { class: "flowMeta" }, [
         el("button", { class: "linkBtn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
@@ -80,23 +78,19 @@ export function renderHistory() {
         btn("7d", "7 Days"),
         btn("all", "All"),
       ]),
-      el("p", { class: "small", style: "margin-top:8px" }, ["Tip: If you’re looping, look at what worked last time."])
     ]);
   }
 
   function filteredItems() {
-    const all = readLog(); // assumed newest-first in this project
-    const limit = 120;
-    const items = all.slice(0, limit);
-
+    const all = readLog().slice(0, 150); // newest-first
     const cutoff =
       state.filter === "today" ? startOfToday()
       : state.filter === "7d" ? daysAgoMs(7)
       : 0;
 
-    if (state.filter === "all") return items;
+    if (state.filter === "all") return all;
 
-    return items.filter(e => {
+    return all.filter(e => {
       const t = e.when ? new Date(e.when).getTime() : 0;
       return t >= cutoff;
     });
@@ -107,10 +101,6 @@ export function renderHistory() {
       return el("div", { class: "card cardPad" }, [
         el("div", { class: "badge" }, ["Summary"]),
         el("p", { class: "p" }, ["No entries in this range yet."]),
-        el("div", { class: "btnRow" }, [
-          el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/yellow/calm") }, ["Start Calm"]),
-          el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/move") }, ["Move Forward"]),
-        ])
       ]);
     }
 
@@ -120,17 +110,13 @@ export function renderHistory() {
       return acc;
     }, {});
 
-    const top = Object.entries(counts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5);
+    const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["Summary"]),
       el("p", { class: "p" }, [`Entries: ${items.length}`]),
       el("p", { class: "small" }, ["Top tools used:"]),
-      ...top.map(([k, n]) =>
-        el("div", { class: "small", style: "margin-top:6px" }, [`• ${niceKind(k)} — ${n}`])
-      ),
+      ...top.map(([k, n]) => el("div", { class: "small", style: "margin-top:6px" }, [`• ${niceKind(k)} — ${n}`])),
     ]);
   }
 
@@ -141,9 +127,6 @@ export function renderHistory() {
 
     let detail = "";
     if (e.kind === "stop_urge" && e.outcome) detail = ` • ${e.outcome === "passed" ? "Urge passed" : "Still present"}`;
-    if (e.kind === "move_forward" && e.label) detail = ` • ${e.label}`;
-    if (e.kind === "direction" && e.direction) detail = ` • ${e.direction}`;
-    if (e.kind === "today_plan" && e.template) detail = ` • ${e.template}`;
     if (e.kind === "clarify" && e.statement) detail = ` • ${e.statement}`;
 
     return el("div", { style: "padding:10px 0;border-bottom:1px solid var(--line);" }, [
@@ -155,21 +138,16 @@ export function renderHistory() {
   function listCard(items) {
     if (!items.length) {
       return el("div", { class: "card cardPad" }, [
-        el("div", { class: "badge" }, ["No entries here"]),
-        el("p", { class: "p" }, ["Use any tool once and it will appear."]),
+        el("div", { class: "badge" }, ["Entries"]),
+        el("p", { class: "p" }, ["Nothing here yet."]),
       ]);
     }
 
-    // group by day label
     const groups = [];
     let current = null;
-
     for (const e of items) {
       const day = e.when ? formatDay(e.when) : "Unknown date";
-      if (day !== current) {
-        current = day;
-        groups.push({ day, entries: [] });
-      }
+      if (day !== current) { current = day; groups.push({ day, entries: [] }); }
       groups[groups.length - 1].entries.push(e);
     }
 
@@ -187,7 +165,6 @@ export function renderHistory() {
     wrap.appendChild(header());
 
     const items = filteredItems();
-
     wrap.appendChild(filterBar());
     wrap.appendChild(summaryCard(items));
     wrap.appendChild(listCard(items));
