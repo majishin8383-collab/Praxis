@@ -1,18 +1,18 @@
 import { readLog } from "./storage.js";
 
+const BUILD_HOME = "UI-SUG-3";
+
 const KEY_DONE = "praxis_onboarding_done";
 const KEY_SNOOZE_UNTIL = "praxis_suggest_snooze_until";
+const KEY_LAST_EMERGENCY = "praxis_last_emergency_ts";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (k === "class") node.className = v;
     else if (k === "html") node.innerHTML = v;
-    else if (k.startsWith("on") && typeof v === "function") {
-      node.addEventListener(k.slice(2).toLowerCase(), v);
-    } else {
-      node.setAttribute(k, v);
-    }
+    else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
+    else node.setAttribute(k, v);
   }
   for (const child of children) {
     if (child == null) continue;
@@ -45,6 +45,15 @@ function snooze(hours = 2) {
 
 function clearSnooze() {
   try { localStorage.setItem(KEY_SNOOZE_UNTIL, "0"); } catch {}
+}
+
+function getLastEmergencyMs() {
+  try {
+    const v = Number(sessionStorage.getItem(KEY_LAST_EMERGENCY) || "0");
+    return Number.isFinite(v) ? v : 0;
+  } catch {
+    return 0;
+  }
 }
 
 function startOfTodayMs() {
@@ -83,10 +92,22 @@ function rerenderHomeIfActive() {
 function computeSuggestion({ ignoreSnooze = false } = {}) {
   if (!ignoreSnooze && isSnoozed()) return null;
 
+  // ✅ Most reliable: sessionStorage marker from Emergency
+  const lastEm = getLastEmergencyMs();
+  if (lastEm && (Date.now() - lastEm) <= 60 * 60 * 1000) {
+    return {
+      badge: "Safety",
+      title: "Stabilize first",
+      text: "If safety is still at risk, use Emergency now. If you’re safe enough, do Calm for 2 minutes.",
+      primary: { label: "Calm Me Down", to: "#/yellow/calm" },
+      secondary: { label: "Emergency", to: "#/red/emergency" },
+    };
+  }
+
   let log = [];
   try { log = readLog().slice(0, 120); } catch { log = []; }
 
-  // ✅ NEW RULE: If Emergency screen was opened recently, show a gentle safety suggestion.
+  // fallback: log marker (nice to have)
   const lastEmergency = log.find(e => e.kind === "emergency_open");
   if (lastEmergency && minutesAgo(lastEmergency.when) <= 60) {
     return {
@@ -277,6 +298,7 @@ export function renderHome() {
     el("div", { class: "homeHeader" }, [
       el("h1", { class: "h1" }, ["Reset"]),
       el("p", { class: "p" }, ["Choose the next right action. Praxis will guide the rest."]),
+      el("div", { class: "small" }, [`Home ${BUILD_HOME}`]),
       snoozed
         ? el("div", { class: "btnRow", style: "margin-top:10px" }, [
             el("button", {
