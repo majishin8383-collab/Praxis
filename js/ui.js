@@ -3,8 +3,11 @@ function el(tag, attrs = {}, children = []) {
   for (const [k, v] of Object.entries(attrs)) {
     if (k === "class") node.className = v;
     else if (k === "html") node.innerHTML = v;
-    else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
-    else node.setAttribute(k, v);
+    else if (k.startsWith("on") && typeof v === "function") {
+      node.addEventListener(k.slice(2).toLowerCase(), v);
+    } else {
+      node.setAttribute(k, v);
+    }
   }
   for (const child of children) {
     if (child == null) continue;
@@ -55,6 +58,13 @@ const TILES = [
     to: "#/green/move",
   },
   {
+    title: "Find Your Next Step",
+    sub: "Tap → go",
+    hint: "Choose what’s closest.",
+    dot: "dotGreen",
+    to: "#/green/next",
+  },
+  {
     title: "Choose Today’s Direction",
     sub: "Pick a lane for today",
     hint: "Stability / Maintenance / Progress / Recovery.",
@@ -62,7 +72,7 @@ const TILES = [
     to: "#/green/direction",
   },
 
-  // ✅ Add the missing standalone tile
+  // ✅ Standalone Today Plan tile
   {
     title: "Today’s Plan",
     sub: "Three steps only",
@@ -71,32 +81,29 @@ const TILES = [
     to: "#/green/today",
   },
 
-  {
-    title: "Find Your Next Step",
-    sub: "Tap → go",
-    hint: "No thinking. Choose what’s closest.",
-    dot: "dotGreen",
-    to: "#/green/next",
-  },
-
-  // Reflect
+  // Reflect / clarify
   {
     title: "Clarify the Next Move",
-    sub: "Contained thinking",
-    hint: "Short prompts. No spiraling.",
+    sub: "Lock a move",
+    hint: "Tap quickly. End with one action.",
     dot: "dotGreen",
     to: "#/reflect",
+  },
+
+  // ✅ NEW: History
+  {
+    title: "History",
+    sub: "See your momentum",
+    hint: "Recent sessions + summary.",
+    dot: "dotGreen",
+    to: "#/history",
   },
 ];
 
 function tileButton(t) {
   return el(
     "button",
-    {
-      class: "actionTile",
-      type: "button",
-      onClick: () => (location.hash = t.to),
-    },
+    { class: "actionTile", type: "button", onClick: () => (location.hash = t.to) },
     [
       el("div", { class: "tileTop" }, [
         el("div", {}, [
@@ -120,8 +127,7 @@ export function renderHome() {
     ])
   );
 
-  const grid = el("div", { class: "homeGrid" }, TILES.map(tileButton));
-  wrap.appendChild(grid);
+  wrap.appendChild(el("div", { class: "homeGrid" }, TILES.map(tileButton)));
 
   return wrap;
 }
