@@ -1,6 +1,8 @@
 import { appendLog, readLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
+const BUILD = "SU-4";
+
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -144,7 +146,6 @@ export function renderStopUrge() {
               e.outcome === "passed" ? "Urge passed" : "Urge still present"
             }`
           ]),
-          e.note ? el("div", { class: "small" }, [e.note]) : null,
         ])
       )
     ]);
@@ -155,8 +156,8 @@ export function renderStopUrge() {
       el("div", {}, [
         el("h1", { class: "h1" }, ["Stop the Urge"]),
         el("p", { class: "p" }, ["Pause. Add friction. Protect your future self."]),
+        el("div", { class: "small" }, [`Build ${BUILD}`]),
       ]),
-      // Reset button hidden by CSS; safe to keep
       el("div", { class: "flowMeta" }, [
         el("button", { class: "linkBtn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
       ])
@@ -173,7 +174,6 @@ export function renderStopUrge() {
           el("button", { class: "btn", type: "button", onClick: () => startPause(5) }, ["Start 5 min"]),
           el("button", { class: "btn", type: "button", onClick: () => startPause(10) }, ["Start 10 min"]),
         ]),
-        el("p", { class: "small" }, ["Delay beats regret."]),
       ]);
     }
 
@@ -189,13 +189,20 @@ export function renderStopUrge() {
         el("button", { class: "btn", type: "button", onClick: () => extend(10) }, ["+10 min"]),
         el("button", { class: "btn", type: "button", onClick: () => { running = false; stopTick(); rerender("idle"); } }, ["Stop"]),
       ]),
-      el("p", { class: "small" }, ["If compelled: copy a script instead of improvising."]),
     ]);
   }
 
   function scriptsPanel() {
     const set = SCRIPT_SETS.find(s => s.id === selectedSetId) || SCRIPT_SETS[0];
     const text = set.variants[selectedVariantIndex] || set.variants[0];
+
+    const setButtons = el("div", { class: "btnRow" }, SCRIPT_SETS.map(s =>
+      el("button", {
+        class: "btn",
+        type: "button",
+        onClick: () => { selectedSetId = s.id; selectedVariantIndex = 0; rerender(currentMode); }
+      }, [s.title])
+    ));
 
     const preview = el("div", {
       class: "card cardPad",
@@ -206,16 +213,8 @@ export function renderStopUrge() {
       el("div", { class: "btnRow" }, [
         el("button", { class: "btn btnPrimary", type: "button", onClick: () => copyToClipboard(text) }, ["Copy this"]),
       ]),
-      el("p", { class: "small", style: "margin-top:8px" }, ["Tip: If copy is blocked on mobile, it will pop up so you can copy manually."])
+      el("p", { class: "small", style: "margin-top:8px" }, ["If copy is blocked on mobile, it will pop up so you can copy manually."])
     ]);
-
-    const setButtons = el("div", { class: "btnRow" }, SCRIPT_SETS.map(s =>
-      el("button", {
-        class: "btn",
-        type: "button",
-        onClick: () => { selectedSetId = s.id; selectedVariantIndex = 0; rerender("idle"); }
-      }, [s.title])
-    ));
 
     const variants = el("div", { class: "flowShell" }, [
       el("h2", { class: "h2" }, ["Options"]),
@@ -224,79 +223,69 @@ export function renderStopUrge() {
         el("button", {
           class: "btn",
           type: "button",
-          onClick: () => { selectedVariantIndex = idx; rerender("idle"); }
+          onClick: () => { selectedVariantIndex = idx; rerender(currentMode); }
         }, [`Option ${idx + 1}`])
       )),
     ]);
 
     return el("div", { class: "flowShell" }, [
       el("h2", { class: "h2" }, ["Scripts"]),
-      el("p", { class: "p" }, ["Pick a category, preview, then copy."]),
       setButtons,
       preview,
       variants,
     ]);
   }
 
-  function outcomePanel() {
-    return el("div", { class: "flowShell" }, [
-      el("h2", { class: "h2" }, ["After the pause"]),
-      el("p", { class: "p" }, ["Choose the truth. This keeps Praxis honest and useful."]),
-      el("div", { class: "btnRow" }, [
-        el("button", {
-          class: "btn btnPrimary",
-          type: "button",
-          onClick: () => { logOutcome("passed", "Urge passed."); rerender("logged"); }
-        }, ["Urge passed"]),
-        el("button", {
-          class: "btn",
-          type: "button",
-          onClick: () => { logOutcome("still_present", "Urge still present."); rerender("logged"); }
-        }, ["Still present"]),
-      ]),
-      el("p", { class: "small" }, ["If it’s still present: extend the pause, then choose again."]),
+  function statusCard(mode) {
+    if (mode === "pause_done") {
+      return el("div", { class: "card cardPad" }, [
+        el("div", { class: "badge" }, ["Pause complete"]),
+        el("p", { class: "p" }, ["Choose what’s true right now."]),
+        el("div", { class: "btnRow" }, [
+          el("button", { class: "btn btnPrimary", type: "button", onClick: () => { logOutcome("passed", "Urge passed."); rerender("logged"); } }, ["Urge passed"]),
+          el("button", { class: "btn", type: "button", onClick: () => { logOutcome("still_present", "Urge still present."); rerender("logged"); } }, ["Still present"]),
+        ]),
+      ]);
+    }
+
+    if (mode === "logged") {
+      return el("div", { class: "card cardPad" }, [
+        el("div", { class: "badge" }, ["Saved"]),
+        el("p", { class: "p" }, ["Logged. Return Home or run it again."]),
+        el("div", { class: "btnRow" }, [
+          el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, ["Back to Reset"]),
+          el("button", { class: "btn", type: "button", onClick: () => rerender("idle") }, ["Run again"]),
+        ]),
+      ]);
+    }
+
+    return el("div", { class: "card cardPad" }, [
+      el("div", { class: "badge" }, ["When you’re ready"]),
+      el("p", { class: "p" }, ["Start a pause. If needed, use a script."]),
     ]);
   }
 
+  let currentMode = "idle";
+
   function rerender(mode) {
+    currentMode = mode;
     wrap.innerHTML = "";
     wrap.appendChild(header());
 
-    const card1 = el("div", { class: "card cardPad" }, [
+    const pauseCard = el("div", { class: "card cardPad" }, [
       el("h2", { class: "h2" }, ["Pause"]),
       timerPanel(),
     ]);
 
-    const card2 = el("div", { class: "card cardPad" }, [scriptsPanel()]);
+    // ✅ This is the key: status card is BETWEEN Pause and Scripts
+    const status = statusCard(mode);
 
-    const card3 = el("div", { class: "card cardPad" }, [
-      mode === "pause_done"
-        ? el("div", {}, [
-            el("div", { class: "badge" }, ["Pause complete"]),
-            el("p", { class: "p" }, ["Good. Now choose what’s true right now."]),
-            outcomePanel(),
-          ])
-        : mode === "logged"
-        ? el("div", {}, [
-            el("div", { class: "badge" }, ["Saved"]),
-            el("p", { class: "p" }, ["Logged. Return Home or run it again."]),
-            el("div", { class: "btnRow" }, [
-              el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, ["Back to Reset"]),
-              el("button", { class: "btn", type: "button", onClick: () => rerender("idle") }, ["Run again"]),
-            ]),
-          ])
-        : el("div", {}, [
-            el("div", { class: "badge" }, ["When you’re ready"]),
-            el("p", { class: "p" }, ["Start a pause. If needed, use a script."]),
-            el("p", { class: "small" }, ["Outcome selection appears when the timer ends."]),
-          ])
-    ]);
-
+    const scriptsCard = el("div", { class: "card cardPad" }, [scriptsPanel()]);
     const logCard = el("div", { class: "card cardPad" }, [recentLogs()]);
 
-    wrap.appendChild(card1);
-    wrap.appendChild(card2);
-    wrap.appendChild(card3);
+    wrap.appendChild(pauseCard);
+    wrap.appendChild(status);
+    wrap.appendChild(scriptsCard);
     wrap.appendChild(logCard);
 
     if (running) updateTimerUI();
