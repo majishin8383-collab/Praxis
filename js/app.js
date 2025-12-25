@@ -1,3 +1,7 @@
 import { initRouter } from "./router.js";
 
-initRouter();
+function boot() {
+  initRouter();
+}
+
+boot();
