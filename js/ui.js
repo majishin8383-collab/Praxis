@@ -1,6 +1,6 @@
 import { readLog } from "./storage.js";
 
-const BUILD_HOME = "UI-SUG-3";
+const BUILD_HOME = "UI-SUG-4";
 
 const KEY_DONE = "praxis_onboarding_done";
 const KEY_SNOOZE_UNTIL = "praxis_suggest_snooze_until";
@@ -89,35 +89,36 @@ function rerenderHomeIfActive() {
   return false;
 }
 
-function computeSuggestion({ ignoreSnooze = false } = {}) {
-  if (!ignoreSnooze && isSnoozed()) return null;
-
-  // ✅ Most reliable: sessionStorage marker from Emergency
+// ✅ Safety should NOT be blocked by snooze
+function hasRecentEmergencyFromSession() {
   const lastEm = getLastEmergencyMs();
-  if (lastEm && (Date.now() - lastEm) <= 60 * 60 * 1000) {
-    return {
-      badge: "Safety",
-      title: "Stabilize first",
-      text: "If safety is still at risk, use Emergency now. If you’re safe enough, do Calm for 2 minutes.",
-      primary: { label: "Calm Me Down", to: "#/yellow/calm" },
-      secondary: { label: "Emergency", to: "#/red/emergency" },
-    };
-  }
+  return !!(lastEm && (Date.now() - lastEm) <= 60 * 60 * 1000);
+}
 
+// fallback for older sessions (nice-to-have)
+function hasRecentEmergencyFromLog(log) {
+  const lastEmergency = log.find(e => e.kind === "emergency_open");
+  return !!(lastEmergency && minutesAgo(lastEmergency.when) <= 60);
+}
+
+function computeSuggestion() {
   let log = [];
   try { log = readLog().slice(0, 120); } catch { log = []; }
 
-  // fallback: log marker (nice to have)
-  const lastEmergency = log.find(e => e.kind === "emergency_open");
-  if (lastEmergency && minutesAgo(lastEmergency.when) <= 60) {
+  // ✅ RULE 0: Safety overrides snooze, always
+  if (hasRecentEmergencyFromSession() || hasRecentEmergencyFromLog(log)) {
     return {
       badge: "Safety",
       title: "Stabilize first",
       text: "If safety is still at risk, use Emergency now. If you’re safe enough, do Calm for 2 minutes.",
       primary: { label: "Calm Me Down", to: "#/yellow/calm" },
       secondary: { label: "Emergency", to: "#/red/emergency" },
+      allowDismiss: false, // we’ll show Hide instead of Dismiss
     };
   }
+
+  // Normal suggestions can be snoozed
+  if (isSnoozed()) return null;
 
   if (!log.length) {
     return {
@@ -126,6 +127,7 @@ function computeSuggestion({ ignoreSnooze = false } = {}) {
       text: "If you’re unsure, don’t think—reduce intensity first.",
       primary: { label: "Calm Me Down", to: "#/yellow/calm" },
       secondary: { label: "How it works", to: "#/onboarding" },
+      allowDismiss: true,
     };
   }
 
@@ -142,6 +144,7 @@ function computeSuggestion({ ignoreSnooze = false } = {}) {
       text: lastClarify.statement,
       primary: { label: "Do it now", to },
       secondary: { label: "Run Clarify", to: "#/reflect" },
+      allowDismiss: true,
     };
   }
 
@@ -155,6 +158,7 @@ function computeSuggestion({ ignoreSnooze = false } = {}) {
       text: "Run Calm for 2 minutes, then re-run Stop the Urge. Don’t improvise.",
       primary: { label: "Calm Me Down", to: "#/yellow/calm" },
       secondary: { label: "Stop the Urge", to: "#/yellow/stop" },
+      allowDismiss: true,
     };
   }
 
@@ -166,6 +170,7 @@ function computeSuggestion({ ignoreSnooze = false } = {}) {
       text: "You’ve stabilized. Now use movement to break the loop.",
       primary: { label: "Move Forward", to: "#/green/move" },
       secondary: { label: "Find Next Step", to: "#/green/next" },
+      allowDismiss: true,
     };
   }
 
@@ -176,6 +181,7 @@ function computeSuggestion({ ignoreSnooze = false } = {}) {
       text: "Pick one direction for today so your brain stops bargaining.",
       primary: { label: "Today’s Direction", to: "#/green/direction" },
       secondary: { label: "Today’s Plan", to: "#/green/today" },
+      allowDismiss: true,
     };
   }
 
@@ -186,6 +192,7 @@ function computeSuggestion({ ignoreSnooze = false } = {}) {
       text: "Pick a simple 3-step plan for today.",
       primary: { label: "Today’s Plan", to: "#/green/today" },
       secondary: { label: "Find Next Step", to: "#/green/next" },
+      allowDismiss: true,
     };
   }
 
@@ -196,6 +203,7 @@ function computeSuggestion({ ignoreSnooze = false } = {}) {
       text: "After momentum, lock one move so you don’t drift back into thinking.",
       primary: { label: "Clarify", to: "#/reflect" },
       secondary: { label: "History", to: "#/history" },
+      allowDismiss: true,
     };
   }
 
@@ -205,6 +213,7 @@ function computeSuggestion({ ignoreSnooze = false } = {}) {
     text: "Tap a move. Don’t negotiate with the moment.",
     primary: { label: "Find Next Step", to: "#/green/next" },
     secondary: { label: "Clarify", to: "#/reflect" },
+    allowDismiss: true,
   };
 }
 
@@ -270,8 +279,10 @@ function tileButton(t) {
 }
 
 function suggestionCard() {
-  const s = computeSuggestion({ ignoreSnooze: false });
+  const s = computeSuggestion();
   if (!s) return null;
+
+  const hideLabel = s.allowDismiss === false ? "Hide (2h)" : "Dismiss";
 
   return el("div", { class: "card cardPad" }, [
     el("div", { class: "badge" }, [s.badge || "Suggestion"]),
@@ -284,7 +295,7 @@ function suggestionCard() {
         class: "btn",
         type: "button",
         onClick: () => { snooze(2); rerenderHomeIfActive() || (location.hash = "#/home"); }
-      }, ["Dismiss"]),
+      }, [hideLabel]),
     ])
   ]);
 }
@@ -293,13 +304,14 @@ export function renderHome() {
   const wrap = el("div", { class: "homeShell" });
 
   const snoozed = isSnoozed();
+  const safetyActive = hasRecentEmergencyFromSession(); // if true, we shouldn’t show "Show suggestions" gate
 
   wrap.appendChild(
     el("div", { class: "homeHeader" }, [
       el("h1", { class: "h1" }, ["Reset"]),
       el("p", { class: "p" }, ["Choose the next right action. Praxis will guide the rest."]),
       el("div", { class: "small" }, [`Home ${BUILD_HOME}`]),
-      snoozed
+      (snoozed && !safetyActive)
         ? el("div", { class: "btnRow", style: "margin-top:10px" }, [
             el("button", {
               class: "btn",
