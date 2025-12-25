@@ -17,28 +17,38 @@
 
 *{box-sizing:border-box}
 html,body{height:100%}
+
 body{
   margin:0;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-  /* ✅ smoother fades — removes “hard line” seam */
+  background: var(--bg);
+  color:var(--text);
+  position:relative;
+}
+
+/* ✅ Seam-proof background layer (no hard transparent cutoff) */
+body::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  z-index:-1;
   background:
     radial-gradient(1200px 800px at 20% -10%,
-      rgba(86,240,139,.16) 0%,
-      rgba(86,240,139,.10) 22%,
-      rgba(86,240,139,.05) 40%,
-      transparent 68%),
+      rgba(86,240,139,.18) 0%,
+      rgba(86,240,139,.10) 28%,
+      rgba(86,240,139,.05) 52%,
+      rgba(86,240,139,0) 78%),
     radial-gradient(900px 600px at 90% 10%,
       rgba(255,216,74,.14) 0%,
-      rgba(255,216,74,.08) 28%,
-      rgba(255,216,74,.04) 48%,
-      transparent 74%),
+      rgba(255,216,74,.08) 34%,
+      rgba(255,216,74,.04) 56%,
+      rgba(255,216,74,0) 80%),
     radial-gradient(900px 600px at 50% 120%,
       rgba(255,77,77,.12) 0%,
-      rgba(255,77,77,.06) 35%,
-      rgba(255,77,77,.03) 55%,
-      transparent 78%),
-    var(--bg);
-  color:var(--text);
+      rgba(255,77,77,.06) 40%,
+      rgba(255,77,77,.03) 60%,
+      rgba(255,77,77,0) 84%);
 }
 
 a{color:inherit}
