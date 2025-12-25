@@ -1,0 +1,105 @@
+.card{
+  background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.03));
+  border:1px solid var(--line);
+  border-radius:var(--r);
+  box-shadow:var(--shadow);
+}
+
+.cardPad{padding:14px}
+
+.badge{
+  display:inline-flex;
+  align-items:center;
+  padding:6px 10px;
+  border-radius:999px;
+  background:rgba(255,255,255,.06);
+  border:1px solid var(--line);
+  color:var(--text);
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.2px;
+}
+
+.btnRow{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:10px;
+}
+
+.btn{
+  appearance:none;
+  border:1px solid var(--line);
+  background:rgba(255,255,255,.05);
+  color:var(--text);
+  padding:11px 14px;
+  border-radius:14px;
+  font-weight:800;
+  cursor:pointer;
+  transition:transform .06s ease, background .15s ease;
+}
+
+.btn:active{transform:scale(.99)}
+.btn:hover{background:rgba(255,255,255,.07)}
+
+.btnPrimary{
+  border-color:rgba(86,240,139,.35);
+  background:rgba(86,240,139,.10);
+}
+
+.btnDanger{
+  border-color:rgba(255,77,77,.35);
+  background:rgba(255,77,77,.10);
+}
+
+.linkBtn{
+  appearance:none;
+  background:transparent;
+  color:var(--text);
+  border:1px solid var(--line);
+  border-radius:999px;
+  padding:8px 12px;
+  font-weight:900;
+  cursor:pointer;
+}
+
+.flowHeader{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  margin-bottom:12px;
+}
+
+.flowMeta{display:flex; gap:10px; align-items:center}
+
+.flowShell{display:flex; flex-direction:column; gap:10px}
+
+.timerBox{
+  padding:14px;
+  border-radius:var(--r);
+  border:1px solid var(--line);
+  background:rgba(255,255,255,.04);
+}
+
+.timerReadout{
+  font-weight:1000;
+  font-size:40px;
+  letter-spacing:1px;
+  margin-top:8px;
+}
+
+.progressBar{
+  height:10px;
+  background:rgba(255,255,255,.06);
+  border:1px solid var(--line);
+  border-radius:999px;
+  overflow:hidden;
+  margin-top:10px;
+}
+
+.progressFill{
+  height:100%;
+  width:0%;
+  background:rgba(86,240,139,.65);
+}
