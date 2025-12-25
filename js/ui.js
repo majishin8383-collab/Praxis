@@ -42,9 +42,17 @@ function snooze(hours = 2) {
   try {
     const until = Date.now() + hours * 60 * 60 * 1000;
     localStorage.setItem(KEY_SNOOZE_UNTIL, String(until));
-  } catch {
-    // ignore
-  }
+  } catch {}
+}
+
+function clearSnooze() {
+  try {
+    localStorage.setItem(KEY_SNOOZE_UNTIL, "0");
+  } catch {}
+}
+
+function isSnoozed() {
+  return Date.now() < getSnoozeUntil();
 }
 
 function startOfTodayMs() {
@@ -71,16 +79,16 @@ function routeForClarifyMove(moveId) {
   return map[moveId] || "#/home";
 }
 
-function computeSuggestion() {
-  // Respect snooze
-  if (Date.now() < getSnoozeUntil()) return null;
+function computeSuggestion({ ignoreSnooze = false } = {}) {
+  if (!ignoreSnooze && isSnoozed()) return null;
 
   let log = [];
   try {
-    log = readLog().slice(0, 80); // newest-first in this project
+    log = readLog().slice(0, 80);
   } catch {
     log = [];
   }
+
   if (!log.length) {
     return {
       badge: "Quick Start",
@@ -93,10 +101,8 @@ function computeSuggestion() {
 
   const todayCutoff = startOfTodayMs();
   const today = log.filter(e => e.when && new Date(e.when).getTime() >= todayCutoff);
-
   const last = log[0];
 
-  // 1) If the last thing they did was Clarify recently, nudge to execute it.
   const lastClarify = log.find(e => e.kind === "clarify" && e.statement);
   if (lastClarify && minutesAgo(lastClarify.when) <= 360) {
     const to = routeForClarifyMove(lastClarify.move);
@@ -109,11 +115,9 @@ function computeSuggestion() {
     };
   }
 
-  // 2) If they’re looping Stop the Urge and still present, suggest Calm + extend.
   const recentUrge = log.filter(e => e.kind === "stop_urge" && minutesAgo(e.when) <= 120);
   const lastUrge = recentUrge[0];
   const stillPresentCount = recentUrge.filter(e => e.outcome === "still_present").length;
-
   if (lastUrge && (lastUrge.outcome === "still_present" || stillPresentCount >= 2)) {
     return {
       badge: "Loop detected",
@@ -124,7 +128,6 @@ function computeSuggestion() {
     };
   }
 
-  // 3) If Calm is repeated a lot today, suggest moving into action.
   const calmToday = today.filter(e => e.kind === "calm").length;
   if (calmToday >= 2) {
     return {
@@ -136,7 +139,6 @@ function computeSuggestion() {
     };
   }
 
-  // 4) If nothing today, suggest direction first.
   if (today.length === 0) {
     return {
       badge: "Start here",
@@ -147,7 +149,6 @@ function computeSuggestion() {
     };
   }
 
-  // 5) Default: based on last tool, suggest the next logical tool (consistent flow).
   if (last.kind === "direction") {
     return {
       badge: "Next step",
@@ -168,7 +169,6 @@ function computeSuggestion() {
     };
   }
 
-  // Fallback
   return {
     badge: "Suggestion",
     title: "Find your next step",
@@ -187,21 +187,14 @@ export function setMain(viewNode) {
 
 function baseTiles() {
   return [
-    // Yellow zone
     { title: "Calm Me Down", sub: "Drop intensity fast", hint: "2 minutes. Guided.", dot: "dotYellow", to: "#/yellow/calm" },
     { title: "Stop the Urge", sub: "Pause before acting", hint: "Buy time. Add friction.", dot: "dotYellow", to: "#/yellow/stop" },
-
-    // Red zone
     { title: "Emergency", sub: "Immediate support", hint: "Use when safety is at risk.", dot: "dotRed", to: "#/red/emergency" },
-
-    // Green zone
     { title: "Move Forward", sub: "Body first. Then progress.", hint: "Pick a ladder. Do it until the timer ends.", dot: "dotGreen", to: "#/green/move" },
     { title: "Find Your Next Step", sub: "Tap → go", hint: "Choose what’s closest.", dot: "dotGreen", to: "#/green/next" },
     { title: "Choose Today’s Direction", sub: "Pick a lane for today", hint: "Stability / Maintenance / Progress / Recovery.", dot: "dotGreen", to: "#/green/direction" },
     { title: "Today’s Plan", sub: "Three steps only", hint: "Pick a template, then fill 3 moves.", dot: "dotGreen", to: "#/green/today" },
     { title: "Clarify the Next Move", sub: "Lock a move", hint: "Tap quickly. End with one action.", dot: "dotGreen", to: "#/reflect" },
-
-    // History
     { title: "History", sub: "See your momentum", hint: "Recent sessions + summary.", dot: "dotGreen", to: "#/history" },
   ];
 }
@@ -221,14 +214,11 @@ function getTiles() {
   const tiles = baseTiles();
   const onboard = onboardingTile(done);
 
-  // First-time users: onboarding goes FIRST
   if (!done) return [onboard, ...tiles];
 
-  // Returning users: onboarding stays near bottom (before History)
   const historyIndex = tiles.findIndex(t => t.to === "#/history");
   if (historyIndex >= 0) tiles.splice(historyIndex, 0, onboard);
   else tiles.push(onboard);
-
   return tiles;
 }
 
@@ -249,8 +239,8 @@ function tileButton(t) {
   );
 }
 
-function suggestionCard() {
-  const s = computeSuggestion();
+function suggestionCard({ forceShow = false } = {}) {
+  const s = computeSuggestion({ ignoreSnooze: forceShow });
   if (!s) return null;
 
   return el("div", { class: "card cardPad" }, [
@@ -260,7 +250,11 @@ function suggestionCard() {
     el("div", { class: "btnRow" }, [
       el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = s.primary.to) }, [s.primary.label]),
       el("button", { class: "btn", type: "button", onClick: () => (location.hash = s.secondary.to) }, [s.secondary.label]),
-      el("button", { class: "btn", type: "button", onClick: () => { snooze(2); location.hash = "#/home"; } }, ["Dismiss"]),
+      el("button", {
+        class: "btn",
+        type: "button",
+        onClick: () => { snooze(2); location.hash = "#/home"; }
+      }, ["Hide"]),
     ])
   ]);
 }
@@ -268,14 +262,25 @@ function suggestionCard() {
 export function renderHome() {
   const wrap = el("div", { class: "homeShell" });
 
-  wrap.appendChild(
-    el("div", { class: "homeHeader" }, [
-      el("h1", { class: "h1" }, ["Reset"]),
-      el("p", { class: "p" }, ["Choose the next right action. Praxis will guide the rest."]),
-    ])
-  );
+  const snoozed = isSnoozed();
 
-  const sCard = suggestionCard();
+  const headerRow = el("div", { class: "homeHeader" }, [
+    el("h1", { class: "h1" }, ["Reset"]),
+    el("p", { class: "p" }, ["Choose the next right action. Praxis will guide the rest."]),
+    snoozed
+      ? el("div", { class: "btnRow", style: "margin-top:10px" }, [
+          el("button", {
+            class: "btn",
+            type: "button",
+            onClick: () => { clearSnooze(); location.hash = "#/home"; }
+          }, ["Show suggestion"])
+        ])
+      : null
+  ].filter(Boolean));
+
+  wrap.appendChild(headerRow);
+
+  const sCard = suggestionCard({ forceShow: false });
   if (sCard) wrap.appendChild(sCard);
 
   const TILES = getTiles();
