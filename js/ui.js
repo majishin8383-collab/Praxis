@@ -38,6 +38,10 @@ function getSnoozeUntil() {
   }
 }
 
+function isSnoozed() {
+  return Date.now() < getSnoozeUntil();
+}
+
 function snooze(hours = 2) {
   try {
     const until = Date.now() + hours * 60 * 60 * 1000;
@@ -49,10 +53,6 @@ function clearSnooze() {
   try {
     localStorage.setItem(KEY_SNOOZE_UNTIL, "0");
   } catch {}
-}
-
-function isSnoozed() {
-  return Date.now() < getSnoozeUntil();
 }
 
 function startOfTodayMs() {
@@ -79,12 +79,22 @@ function routeForClarifyMove(moveId) {
   return map[moveId] || "#/home";
 }
 
+// 🔧 Key fix: force a rerender when we're already on Home
+function rerenderHomeIfActive() {
+  if ((location.hash || "#/home").startsWith("#/home")) {
+    setMain(renderHome());
+    window.scrollTo(0, 0);
+    return true;
+  }
+  return false;
+}
+
 function computeSuggestion({ ignoreSnooze = false } = {}) {
   if (!ignoreSnooze && isSnoozed()) return null;
 
   let log = [];
   try {
-    log = readLog().slice(0, 80);
+    log = readLog().slice(0, 80); // newest-first in this project
   } catch {
     log = [];
   }
@@ -239,8 +249,8 @@ function tileButton(t) {
   );
 }
 
-function suggestionCard({ forceShow = false } = {}) {
-  const s = computeSuggestion({ ignoreSnooze: forceShow });
+function suggestionCard() {
+  const s = computeSuggestion({ ignoreSnooze: false });
   if (!s) return null;
 
   return el("div", { class: "card cardPad" }, [
@@ -253,8 +263,12 @@ function suggestionCard({ forceShow = false } = {}) {
       el("button", {
         class: "btn",
         type: "button",
-        onClick: () => { snooze(2); location.hash = "#/home"; }
-      }, ["Hide"]),
+        onClick: () => {
+          snooze(2);
+          // force update immediately
+          rerenderHomeIfActive() || (location.hash = "#/home");
+        }
+      }, ["Dismiss"]),
     ])
   ]);
 }
@@ -264,23 +278,27 @@ export function renderHome() {
 
   const snoozed = isSnoozed();
 
-  const headerRow = el("div", { class: "homeHeader" }, [
-    el("h1", { class: "h1" }, ["Reset"]),
-    el("p", { class: "p" }, ["Choose the next right action. Praxis will guide the rest."]),
-    snoozed
-      ? el("div", { class: "btnRow", style: "margin-top:10px" }, [
-          el("button", {
-            class: "btn",
-            type: "button",
-            onClick: () => { clearSnooze(); location.hash = "#/home"; }
-          }, ["Show suggestion"])
-        ])
-      : null
-  ].filter(Boolean));
+  wrap.appendChild(
+    el("div", { class: "homeHeader" }, [
+      el("h1", { class: "h1" }, ["Reset"]),
+      el("p", { class: "p" }, ["Choose the next right action. Praxis will guide the rest."]),
+      snoozed
+        ? el("div", { class: "btnRow", style: "margin-top:10px" }, [
+            el("button", {
+              class: "btn",
+              type: "button",
+              onClick: () => {
+                clearSnooze();
+                // force update immediately
+                rerenderHomeIfActive() || (location.hash = "#/home");
+              }
+            }, ["Show suggestions"])
+          ])
+        : null
+    ].filter(Boolean))
+  );
 
-  wrap.appendChild(headerRow);
-
-  const sCard = suggestionCard({ forceShow: false });
+  const sCard = suggestionCard();
   if (sCard) wrap.appendChild(sCard);
 
   const TILES = getTiles();
