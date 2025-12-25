@@ -1,3 +1,5 @@
+const KEY_DONE = "praxis_onboarding_done";
+
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -16,6 +18,14 @@ function el(tag, attrs = {}, children = []) {
   return node;
 }
 
+function onboardingDone() {
+  try {
+    return localStorage.getItem(KEY_DONE) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function setMain(viewNode) {
   const main = document.getElementById("main");
   if (!main) return;
@@ -23,91 +33,93 @@ export function setMain(viewNode) {
   if (viewNode) main.appendChild(viewNode);
 }
 
-const TILES = [
-  // Yellow zone
-  {
-    title: "Calm Me Down",
-    sub: "Drop intensity fast",
-    hint: "2 minutes. Guided.",
-    dot: "dotYellow",
-    to: "#/yellow/calm",
-  },
-  {
-    title: "Stop the Urge",
-    sub: "Pause before acting",
-    hint: "Buy time. Add friction.",
-    dot: "dotYellow",
-    to: "#/yellow/stop",
-  },
+function getTiles() {
+  const done = onboardingDone();
 
-  // Red zone
-  {
-    title: "Emergency",
-    sub: "Immediate support",
-    hint: "Use when safety is at risk.",
-    dot: "dotRed",
-    to: "#/red/emergency",
-  },
+  return [
+    // Yellow zone
+    {
+      title: "Calm Me Down",
+      sub: "Drop intensity fast",
+      hint: "2 minutes. Guided.",
+      dot: "dotYellow",
+      to: "#/yellow/calm",
+    },
+    {
+      title: "Stop the Urge",
+      sub: "Pause before acting",
+      hint: "Buy time. Add friction.",
+      dot: "dotYellow",
+      to: "#/yellow/stop",
+    },
 
-  // Green zone
-  {
-    title: "Move Forward",
-    sub: "Body first. Then progress.",
-    hint: "Pick a ladder. Do it until the timer ends.",
-    dot: "dotGreen",
-    to: "#/green/move",
-  },
-  {
-    title: "Find Your Next Step",
-    sub: "Tap → go",
-    hint: "Choose what’s closest.",
-    dot: "dotGreen",
-    to: "#/green/next",
-  },
-  {
-    title: "Choose Today’s Direction",
-    sub: "Pick a lane for today",
-    hint: "Stability / Maintenance / Progress / Recovery.",
-    dot: "dotGreen",
-    to: "#/green/direction",
-  },
+    // Red zone
+    {
+      title: "Emergency",
+      sub: "Immediate support",
+      hint: "Use when safety is at risk.",
+      dot: "dotRed",
+      to: "#/red/emergency",
+    },
 
-  // ✅ Standalone Today Plan tile
-  {
-    title: "Today’s Plan",
-    sub: "Three steps only",
-    hint: "Pick a template, then fill 3 moves.",
-    dot: "dotGreen",
-    to: "#/green/today",
-  },
+    // Green zone
+    {
+      title: "Move Forward",
+      sub: "Body first. Then progress.",
+      hint: "Pick a ladder. Do it until the timer ends.",
+      dot: "dotGreen",
+      to: "#/green/move",
+    },
+    {
+      title: "Find Your Next Step",
+      sub: "Tap → go",
+      hint: "Choose what’s closest.",
+      dot: "dotGreen",
+      to: "#/green/next",
+    },
+    {
+      title: "Choose Today’s Direction",
+      sub: "Pick a lane for today",
+      hint: "Stability / Maintenance / Progress / Recovery.",
+      dot: "dotGreen",
+      to: "#/green/direction",
+    },
 
-  // Reflect / clarify
-  {
-    title: "Clarify the Next Move",
-    sub: "Lock a move",
-    hint: "Tap quickly. End with one action.",
-    dot: "dotGreen",
-    to: "#/reflect",
-  },
+    {
+      title: "Today’s Plan",
+      sub: "Three steps only",
+      hint: "Pick a template, then fill 3 moves.",
+      dot: "dotGreen",
+      to: "#/green/today",
+    },
 
-  // ✅ NEW: Onboarding
-  {
-    title: "How Praxis Works",
-    sub: "20 seconds",
-    hint: "Tap → timer → lock a move → do it.",
-    dot: "dotGreen",
-    to: "#/onboarding",
-  },
+    {
+      title: "Clarify the Next Move",
+      sub: "Lock a move",
+      hint: "Tap quickly. End with one action.",
+      dot: "dotGreen",
+      to: "#/reflect",
+    },
 
-  // History
-  {
-    title: "History",
-    sub: "See your momentum",
-    hint: "Recent sessions + summary.",
-    dot: "dotGreen",
-    to: "#/history",
-  },
-];
+    // Onboarding (relabels after completion)
+    {
+      title: done ? "Quick Start (replay)" : "How Praxis Works",
+      sub: done ? "Replay anytime" : "20 seconds",
+      hint: done ? "Tap → timer → lock a move → do it." : "Tap → timer → lock a move → do it.",
+      dot: "dotGreen",
+      to: "#/onboarding",
+    },
+
+    // History
+    {
+      title: "History",
+      sub: "See your momentum",
+      hint: "Recent sessions + summary.",
+      dot: "dotGreen",
+      to: "#/history",
+    },
+  ];
+}
 
 function tileButton(t) {
   return el(
@@ -136,6 +148,7 @@ export function renderHome() {
     ])
   );
 
+  const TILES = getTiles();
   wrap.appendChild(el("div", { class: "homeGrid" }, TILES.map(tileButton)));
 
   return wrap;
