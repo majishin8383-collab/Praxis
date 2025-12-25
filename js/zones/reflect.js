@@ -1,4 +1,4 @@
-import { appendLog } from "../storage.js";
+import { appendLog, readLog } from "../storage.js";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -39,6 +39,15 @@ const MOVES = [
   { id: "direction", label: "Choose Today’s Direction", hint: "Pick a lane; stop drifting.", to: "#/green/direction" },
 ];
 
+function lastClarify() {
+  try {
+    const entries = readLog().filter(e => e.kind === "clarify");
+    return entries.length ? entries[0] : null; // storage.js returns newest-first in this project
+  } catch {
+    return null;
+  }
+}
+
 export function renderReflect() {
   const wrap = el("div", { class: "flowShell" });
 
@@ -56,7 +65,6 @@ export function renderReflect() {
         el("h1", { class: "h1" }, ["Clarify the Next Move"]),
         el("p", { class: "p" }, ["Not journaling. Tap quickly. Lock a move."]),
       ]),
-      // Reset button hidden by CSS; safe to keep
       el("div", { class: "flowMeta" }, [
         el("button", { class: "linkBtn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
       ])
@@ -91,18 +99,14 @@ export function renderReflect() {
     const ctrlLabel = CONTROL.find(x => x.id === state.control)?.label || "my actions";
     const moveLabel = MOVES.find(x => x.id === state.move)?.label || "Do nothing for 24 hours";
 
-    // Always ends in a committed stance.
     if (state.move === "pause24") {
       state.statement = "For the next 24 hours, my move is: no contact, no checking, no analysis.";
       return;
     }
-
-    // Slightly different framing when they selected "nothing right now"
     if (state.control === "nothing") {
       state.statement = `This is out of my hands today. My move is: ${moveLabel}.`;
       return;
     }
-
     state.statement = `I’m looping on: ${loopLabel}. I control: ${ctrlLabel}. My next move is: ${moveLabel}.`;
   }
 
@@ -117,15 +121,35 @@ export function renderReflect() {
     });
   }
 
-  function step1() {
+  function lastMoveCard() {
+    const last = lastClarify();
+    if (!last?.statement) return null;
+
+    const moveTo = (MOVES.find(m => m.id === last.move)?.to) || "#/home";
+
     return el("div", { class: "card cardPad" }, [
-      badge("Step 1 of 3"),
-      el("h2", { class: "h2" }, ["What’s looping?"]),
-      el("p", { class: "small" }, ["Pick the closest match."]),
-      el("div", { class: "flowShell", style: "margin-top:10px" }, STEP1.map(o =>
-        tile(o, () => { state.loop = o.id; setStep(2); }, "dotGreen")
-      )),
+      el("div", { class: "badge" }, ["Last locked move"]),
+      el("p", { class: "p" }, [last.statement]),
+      el("div", { class: "btnRow" }, [
+        el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = moveTo) }, ["Do that now"]),
+        el("button", { class: "btn", type: "button", onClick: () => { state.step = 1; state.loop=null; state.control=null; state.move=null; state.statement=""; rerender(); } }, ["Run Clarify"]),
+      ])
     ]);
+  }
+
+  function step1() {
+    const lastCard = lastMoveCard();
+    return el("div", {}, [
+      lastCard,
+      el("div", { class: "card cardPad" }, [
+        badge("Step 1 of 3"),
+        el("h2", { class: "h2" }, ["What’s looping?"]),
+        el("p", { class: "small" }, ["Pick the closest match."]),
+        el("div", { class: "flowShell", style: "margin-top:10px" }, STEP1.map(o =>
+          tile(o, () => { state.loop = o.id; setStep(2); }, "dotGreen")
+        )),
+      ])
+    ].filter(Boolean));
   }
 
   function step2() {
@@ -134,11 +158,7 @@ export function renderReflect() {
       el("h2", { class: "h2" }, ["What’s in your control right now?"]),
       el("p", { class: "small" }, ["This reduces rumination instantly."]),
       el("div", { class: "flowShell", style: "margin-top:10px" }, CONTROL.map(o =>
-        tile(o, () => {
-          state.control = o.id;
-          // If nothing is in control, skip straight to locking a move.
-          setStep(3);
-        }, o.id === "nothing" ? "dotYellow" : "dotGreen")
+        tile(o, () => { state.control = o.id; setStep(3); }, o.id === "nothing" ? "dotYellow" : "dotGreen")
       )),
       el("div", { class: "btnRow" }, [
         el("button", { class: "btn", type: "button", onClick: () => setStep(1) }, ["Back"]),
@@ -160,7 +180,7 @@ export function renderReflect() {
             save();
             setStep(4);
           },
-          m.id === "shield" ? "dotYellow" : m.id === "calm" ? "dotYellow" : "dotGreen"
+          (m.id === "shield" || m.id === "calm") ? "dotYellow" : "dotGreen"
         )
       )),
       el("div", { class: "btnRow" }, [
@@ -177,16 +197,8 @@ export function renderReflect() {
       el("h2", { class: "h2" }, ["Your next move"]),
       el("p", { class: "p" }, [state.statement]),
       el("div", { class: "btnRow" }, [
-        el("button", {
-          class: "btn btnPrimary",
-          type: "button",
-          onClick: () => (location.hash = move.to)
-        }, ["Do it now"]),
-        el("button", {
-          class: "btn",
-          type: "button",
-          onClick: () => (location.hash = "#/home")
-        }, ["Back to Reset"]),
+        el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = move.to) }, ["Do it now"]),
+        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Back to Reset"]),
       ]),
       el("div", { class: "btnRow" }, [
         el("button", { class: "btn", type: "button", onClick: () => { state.step = 1; state.loop=null; state.control=null; state.move=null; state.statement=""; rerender(); } }, ["Run Clarify again"]),
