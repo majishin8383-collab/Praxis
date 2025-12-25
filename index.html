@@ -5,12 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Praxis</title>
 
-  <!-- Keep your existing CSS files -->
-  <link rel="stylesheet" href="./styles/base.css" />
-  <link rel="stylesheet" href="./styles/components.css" />
-  <link rel="stylesheet" href="./styles/home.css" />
-  <link rel="stylesheet" href="./styles/flows.css" />
-  <link rel="stylesheet" href="./styles/redzone.css" />
+  <!-- Auto CSS loader with cache bust -->
+  <script>
+    (function () {
+      const v = Date.now();
+      const styles = [
+        "./styles/base.css",
+        "./styles/components.css",
+        "./styles/home.css",
+        "./styles/flows.css",
+        "./styles/redzone.css"
+      ];
+
+      styles.forEach(href => {
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = href + "?v=" + v;
+        document.head.appendChild(link);
+      });
+    })();
+  </script>
 </head>
 
 <body>
@@ -39,7 +53,7 @@
 
   </div>
 
-  <!-- JS (auto cache-bust for mobile dev) -->
+  <!-- Auto JS cache bust (unchanged, already working) -->
   <script type="module">
     import(`./js/app.js?v=${Date.now()}`);
   </script>
