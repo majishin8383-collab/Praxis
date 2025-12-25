@@ -12,7 +12,9 @@ import { renderFocusSprint } from "./zones/green/focusSprint.js";
 import { renderTodayPlan } from "./zones/green/todayPlan.js";
 
 import { renderReflect } from "./zones/reflect.js";
-import { renderHistory } from "./history.js"; // ✅ NEW
+
+import { renderHistory } from "./history.js";
+import { renderOnboarding } from "./onboarding.js"; // ✅ NEW
 
 const routes = new Map([
   ["#/home", () => renderHome()],
@@ -30,7 +32,8 @@ const routes = new Map([
   ["#/green/today", () => renderTodayPlan()],
   ["#/reflect", () => renderReflect()],
 
-  ["#/history", () => renderHistory()], // ✅ NEW
+  ["#/history", () => renderHistory()],
+  ["#/onboarding", () => renderOnboarding()], // ✅ NEW
 ]);
 
 function getRoute() {
