@@ -22,20 +22,14 @@ function el(tag, attrs = {}, children = []) {
 }
 
 function onboardingDone() {
-  try {
-    return localStorage.getItem(KEY_DONE) === "1";
-  } catch {
-    return false;
-  }
+  try { return localStorage.getItem(KEY_DONE) === "1"; } catch { return false; }
 }
 
 function getSnoozeUntil() {
   try {
     const v = Number(localStorage.getItem(KEY_SNOOZE_UNTIL) || "0");
     return Number.isFinite(v) ? v : 0;
-  } catch {
-    return 0;
-  }
+  } catch { return 0; }
 }
 
 function isSnoozed() {
@@ -50,9 +44,7 @@ function snooze(hours = 2) {
 }
 
 function clearSnooze() {
-  try {
-    localStorage.setItem(KEY_SNOOZE_UNTIL, "0");
-  } catch {}
+  try { localStorage.setItem(KEY_SNOOZE_UNTIL, "0"); } catch {}
 }
 
 function startOfTodayMs() {
@@ -79,7 +71,6 @@ function routeForClarifyMove(moveId) {
   return map[moveId] || "#/home";
 }
 
-// 🔧 Key fix: force a rerender when we're already on Home
 function rerenderHomeIfActive() {
   if ((location.hash || "#/home").startsWith("#/home")) {
     setMain(renderHome());
@@ -93,10 +84,18 @@ function computeSuggestion({ ignoreSnooze = false } = {}) {
   if (!ignoreSnooze && isSnoozed()) return null;
 
   let log = [];
-  try {
-    log = readLog().slice(0, 80); // newest-first in this project
-  } catch {
-    log = [];
+  try { log = readLog().slice(0, 120); } catch { log = []; }
+
+  // ✅ NEW RULE: If Emergency screen was opened recently, show a gentle safety suggestion.
+  const lastEmergency = log.find(e => e.kind === "emergency_open");
+  if (lastEmergency && minutesAgo(lastEmergency.when) <= 60) {
+    return {
+      badge: "Safety",
+      title: "Stabilize first",
+      text: "If safety is still at risk, use Emergency now. If you’re safe enough, do Calm for 2 minutes.",
+      primary: { label: "Calm Me Down", to: "#/yellow/calm" },
+      secondary: { label: "Emergency", to: "#/red/emergency" },
+    };
   }
 
   if (!log.length) {
@@ -263,11 +262,7 @@ function suggestionCard() {
       el("button", {
         class: "btn",
         type: "button",
-        onClick: () => {
-          snooze(2);
-          // force update immediately
-          rerenderHomeIfActive() || (location.hash = "#/home");
-        }
+        onClick: () => { snooze(2); rerenderHomeIfActive() || (location.hash = "#/home"); }
       }, ["Dismiss"]),
     ])
   ]);
@@ -287,11 +282,7 @@ export function renderHome() {
             el("button", {
               class: "btn",
               type: "button",
-              onClick: () => {
-                clearSnooze();
-                // force update immediately
-                rerenderHomeIfActive() || (location.hash = "#/home");
-              }
+              onClick: () => { clearSnooze(); rerenderHomeIfActive() || (location.hash = "#/home"); }
             }, ["Show suggestions"])
           ])
         : null
