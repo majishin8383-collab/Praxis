@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Praxis</title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="./styles/base.css" />
+  <link rel="stylesheet" href="./styles/components.css" />
+  <link rel="stylesheet" href="./styles/home.css" />
+  <link rel="stylesheet" href="./styles/flows.css" />
+  <link rel="stylesheet" href="./styles/redzone.css" />
+</head>
+
+<body>
+  <div id="app" class="app">
+
+    <header class="appHeader">
+      <div class="brand">
+        <div class="brandTitle">PRAXIS</div>
+        <div class="brandSub">Stabilize → Act → Move forward</div>
+      </div>
+
+      <nav class="topNav">
+        <button class="linkBtn" id="navHome" type="button">Reset</button>
+      </nav>
+    </header>
+
+    <main id="main" class="main" role="main" aria-live="polite">
+      <!-- JS renders here -->
+    </main>
+
+    <footer class="footer">
+      <div class="footerNote">
+        You don’t have to figure everything out. Just take the next step.
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- JS (auto version for mobile dev) -->
+  <script type="module">
+    const v = Date.now();
+    import(`./js/app.js?v=${v}`);
+  </script>
+</body>
+</html>
+
+  </div>
+
+  <!-- JS -->
+<script type="module">
+  const v = Date.now();
+  import(`./js/app.js?v=${v}`);
+</script>
+
+</body>
+</html>
