@@ -4,7 +4,15 @@
   padding:14px;
   border-radius:var(--r);
   border:1px solid var(--line);
-  background:rgba(255,255,255,.03);
+
+  /* ✅ soften the green gradient edge */
+  background:
+    linear-gradient(
+      180deg,
+      rgba(86,240,139,.10) 0%,
+      rgba(255,255,255,.04) 55%,
+      rgba(255,255,255,.02) 100%
+    );
 }
 
 .homeGrid{
@@ -36,25 +44,24 @@
   gap:10px;
 }
 
-/* ✅ readability fix */
 .tileTitle{
   font-weight:1000;
   font-size:18px;
   margin:0;
-  color:var(--text);            /* force bright readable */
+  color:var(--text);
 }
 
 .tileSub{
   margin-top:4px;
   font-size:13px;
-  color:var(--muted);           /* match context text */
+  color:var(--muted);
 }
 
 .tileHint{
   margin:10px 0 0 0;
   font-size:13px;
   line-height:1.35;
-  color:var(--muted2);          /* softer than subtitle */
+  color:var(--muted2);
 }
 
 .zoneDot{
