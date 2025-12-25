@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Praxis</title>
 
-  <!-- CSS -->
+  <!-- Keep your existing CSS files -->
   <link rel="stylesheet" href="./styles/base.css" />
   <link rel="stylesheet" href="./styles/components.css" />
   <link rel="stylesheet" href="./styles/home.css" />
@@ -39,21 +39,9 @@
 
   </div>
 
-  <!-- JS (auto version for mobile dev) -->
+  <!-- JS (auto cache-bust for mobile dev) -->
   <script type="module">
-    const v = Date.now();
-    import(`./js/app.js?v=${v}`);
+    import(`./js/app.js?v=${Date.now()}`);
   </script>
-</body>
-</html>
-
-  </div>
-
-  <!-- JS -->
-<script type="module">
-  const v = Date.now();
-  import(`./js/app.js?v=${v}`);
-</script>
-
 </body>
 </html>
