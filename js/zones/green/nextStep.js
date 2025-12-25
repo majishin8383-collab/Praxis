@@ -14,120 +14,92 @@ function el(tag, attrs = {}, children = []) {
 
 const OPTIONS = [
   {
-    id: "overwhelmed",
     label: "Overwhelmed / anxious",
-    hint: "Too much in my head. Hard to start.",
-    recommend: { title: "Calm Me Down", why: "Lower intensity first.", to: "#/yellow/calm" }
+    hint: "Lower intensity first.",
+    go: "#/yellow/calm",
+    goLabel: "Calm Me Down"
   },
   {
-    id: "urge",
     label: "Urge to act / message / react",
-    hint: "I feel pulled to do something I’ll regret.",
-    recommend: { title: "Stop the Urge", why: "Pause before acting.", to: "#/yellow/stop" }
+    hint: "Pause before acting.",
+    go: "#/yellow/stop",
+    goLabel: "Stop the Urge"
   },
   {
-    id: "stuck",
     label: "Stuck / frozen",
-    hint: "I’m not moving, even though I want to.",
-    recommend: { title: "Move Forward", why: "Body first. Then progress.", to: "#/green/move" }
+    hint: "Body first. Then progress.",
+    go: "#/green/move",
+    goLabel: "Move Forward"
   },
   {
-    id: "restless",
     label: "Restless / distracted",
-    hint: "I can’t settle into anything.",
-    recommend: { title: "Move Forward", why: "Burn off noise with motion.", to: "#/green/move" }
+    hint: "Discharge energy fast.",
+    go: "#/green/move",
+    goLabel: "Move Forward"
   },
   {
-    id: "fine",
-    label: "I’m okay — just need direction",
-    hint: "I want a lane for today.",
-    recommend: { title: "Choose Today’s Direction", why: "Pick a lane. Then act.", to: "#/green/direction" }
+    label: "I’m okay — I need direction",
+    hint: "Pick a lane for today.",
+    go: "#/green/direction",
+    goLabel: "Choose Today’s Direction"
   },
   {
-    id: "dontknow",
     label: "I don’t know",
-    hint: "I can’t tell what I need.",
-    recommend: { title: "Move Forward", why: "Action creates clarity.", to: "#/green/move" }
+    hint: "Action creates clarity.",
+    go: "#/green/move",
+    goLabel: "Move Forward"
   }
 ];
 
 export function renderNextStep() {
   const wrap = el("div", { class: "flowShell" });
 
-  let selectedId = null;
-
   function header() {
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["Find Your Next Step"]),
-        el("p", { class: "p" }, ["Pick what’s closest. Praxis recommends one move."]),
+        el("p", { class: "p" }, ["Tap what’s closest. Praxis sends you to the next move."]),
       ]),
-      // (Reset button hidden by CSS; safe to keep)
+      // Reset button hidden by CSS; safe to keep
       el("div", { class: "flowMeta" }, [
         el("button", { class: "linkBtn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
       ])
     ]);
   }
 
-  function optionCard(o) {
-    const active = selectedId === o.id;
+  function tile(o) {
     return el("button", {
       class: "actionTile",
       type: "button",
-      style: active ? "border-color: rgba(86,240,139,.30); background: rgba(86,240,139,.06);" : "",
-      onClick: () => { selectedId = o.id; rerender(); }
+      onClick: () => { location.hash = o.go; }
     }, [
       el("div", { class: "tileTop" }, [
         el("div", {}, [
           el("div", { class: "tileTitle" }, [o.label]),
-          el("div", { class: "tileSub" }, [o.hint]),
+          el("div", { class: "tileSub" }, [o.goLabel]),
         ]),
         el("div", { class: "zoneDot dotGreen" }, []),
       ]),
-      el("p", { class: "tileHint" }, ["Tap to select"]),
+      el("p", { class: "tileHint" }, [o.hint]),
     ]);
   }
 
-  function recommendation() {
-    if (!selectedId) {
-      return el("div", { class: "card cardPad" }, [
-        el("div", { class: "badge" }, ["Choose one above"]),
-        el("p", { class: "p" }, ["No thinking. Just pick what’s closest."]),
-      ]);
-    }
+  wrap.appendChild(header());
 
-    const o = OPTIONS.find(x => x.id === selectedId);
-    const r = o.recommend;
+  wrap.appendChild(el("div", { class: "card cardPad" }, [
+    el("div", { class: "badge" }, ["No thinking. One tap."]),
+    el("p", { class: "small" }, ["Whatever you tap becomes the next screen."]),
+  ]));
 
-    return el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["Recommended next move"]),
-      el("h2", { class: "h2" }, [r.title]),
-      el("p", { class: "p" }, [r.why]),
-      el("div", { class: "btnRow" }, [
-        el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = r.to) }, ["Go"]),
-        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
-      ]),
-      el("p", { class: "small" }, ["If this feels wrong, pick a different option above."]),
-    ]);
-  }
+  wrap.appendChild(el("div", { class: "flowShell" }, OPTIONS.map(tile)));
 
-  function rerender() {
-    wrap.innerHTML = "";
-    wrap.appendChild(header());
+  // Optional: emergency link always visible but not noisy
+  wrap.appendChild(el("div", { class: "card cardPad" }, [
+    el("p", { class: "small" }, ["If you’re at risk of harm:"]),
+    el("div", { class: "btnRow" }, [
+      el("button", { class: "btn btnDanger", type: "button", onClick: () => (location.hash = "#/red/emergency") }, ["Emergency"]),
+    ])
+  ]));
 
-    wrap.appendChild(el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["Which feels closest right now?"]),
-      el("p", { class: "small" }, ["One selection. One recommended action."]),
-    ]));
-
-    // options
-    const list = el("div", { class: "flowShell" }, OPTIONS.map(optionCard));
-    wrap.appendChild(list);
-
-    // recommendation
-    wrap.appendChild(recommendation());
-  }
-
-  rerender();
   return wrap;
 }
