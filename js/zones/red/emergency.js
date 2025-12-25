@@ -1,4 +1,4 @@
-import { appendLog, readLog } from "../../storage.js";
+const BUILD = "EM-1";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -13,74 +13,91 @@ function el(tag, attrs = {}, children = []) {
   }
   return node;
 }
-const nowISO = () => new Date().toISOString();
+
+function go(href) {
+  // for tel:, sms:, and external links
+  window.location.href = href;
+}
+
+function open(url) {
+  // external links: try new tab, fall back to same tab
+  const w = window.open(url, "_blank", "noopener,noreferrer");
+  if (!w) window.location.href = url;
+}
 
 export function renderEmergency() {
   const wrap = el("div", { class: "flowShell" });
 
-  function header() {
-    return el("div", { class: "flowHeader" }, [
-      el("div", {}, [
-        el("h1", { class: "h1" }, ["Emergency"]),
-        el("p", { class: "p" }, ["If you are at risk of harming yourself or someone else, stop here."]),
-      ]),
-      el("div", { class: "flowMeta" }, [
-        el("button", { class: "linkBtn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
-      ])
-    ]);
-  }
-
-  function recent() {
-    const log = readLog().filter(e => e.kind === "emergency").slice(0, 6);
-    if (!log.length) return el("div", {}, [
-      el("h2", { class: "h2" }, ["Recent emergency uses"]),
-      el("p", { class: "p" }, ["No entries yet."]),
-    ]);
-    return el("div", {}, [
-      el("h2", { class: "h2" }, ["Recent emergency uses"]),
-      ...log.map(e => el("div", { style: "padding:10px 0;border-bottom:1px solid var(--line);" }, [
-        el("div", { style: "font-weight:900;" }, ["Emergency"]),
-        el("div", { class: "small" }, [`${new Date(e.when).toLocaleString()} • ${e.action || "used"}`]),
-      ]))
-    ]);
-  }
-
-  function log(action) {
-    appendLog({ kind: "emergency", when: nowISO(), action });
-  }
-
-  const card = el("div", { class: "card cardPad redzone" }, [
-    el("div", { class: "badge" }, ["Call for immediate help"]),
-    el("p", { class: "small" }, ["In the U.S.: 988 or 911"]),
-    el("div", { class: "btnRow" }, [
-      el("a", { class: "btn btnDanger", href: "tel:988", onClick: () => log("called 988") }, ["Call 988"]),
-      el("a", { class: "btn btnDanger", href: "tel:911", onClick: () => log("called 911") }, ["Call 911"]),
+  const header = el("div", { class: "flowHeader" }, [
+    el("div", {}, [
+      el("h1", { class: "h1" }, ["Emergency"]),
+      el("p", { class: "p" }, ["If safety is at risk, get real help now. Praxis will keep this simple."]),
+      el("div", { class: "small" }, [`Build ${BUILD}`]),
     ]),
-    el("div", { class: "hr" }, []),
-    el("div", { class: "btnRow" }, [
-      el("button", {
-        class: "btn",
-        type: "button",
-        onClick: () => {
-          const msg = "I’m not okay. Can you stay with me or call me right now?";
-          window.prompt("Copy & send this message:", msg);
-          log("messaged someone trusted");
-        }
-      }, ["Message someone you trust"]),
-      el("button", {
-        class: "btn",
-        type: "button",
-        onClick: () => {
-          alert("Make the space safer: move to a safer place and create distance from anything that could cause harm.");
-          log("made space safer");
-        }
-      }, ["Make the space safer"]),
-    ]),
-    el("p", { class: "small" }, ["Praxis is not a replacement for professional care."]),
+    el("div", { class: "flowMeta" }, [
+      el("button", { class: "linkBtn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
+    ])
   ]);
 
-  wrap.appendChild(header());
-  wrap.appendChild(card);
-  wrap.appendChild(el("div", { class: "card cardPad" }, [recent()]));
+  const immediate = el("div", { class: "card cardPad" }, [
+    el("div", { class: "badge" }, ["Immediate help"]),
+    el("p", { class: "p" }, [
+      "If you might hurt yourself or someone else, or you’re in immediate danger: call emergency services now."
+    ]),
+    el("div", { class: "btnRow" }, [
+      el("button", { class: "btn btnPrimary", type: "button", onClick: () => go("tel:911") }, ["Call 911"]),
+      el("button", { class: "btn", type: "button", onClick: () => go("tel:988") }, ["Call 988 (US)"]),
+      el("button", { class: "btn", type: "button", onClick: () => go("sms:988") }, ["Text 988 (US)"]),
+    ]),
+    el("div", { class: "btnRow" }, [
+      el("button", { class: "btn", type: "button", onClick: () => open("https://988lifeline.org/chat/") }, ["Chat 988 (US)"]),
+      el("button", { class: "btn", type: "button", onClick: () => open("https://findahelpline.com/") }, ["Outside the US: find a helpline"]),
+    ]),
+    el("p", { class: "small", style: "margin-top:10px" }, [
+      "If you’re not sure, choose 988 (US) or your local emergency number."
+    ]),
+  ]);
+
+  const stabilize = el("div", { class: "card cardPad" }, [
+    el("div", { class: "badge" }, ["2-minute stabilization"]),
+    el("p", { class: "p" }, ["Do these in order. No thinking."]),
+    el("div", { class: "flowShell" }, [
+      el("div", { style: "padding:10px 0;border-bottom:1px solid var(--line);" }, [
+        el("div", { style: "font-weight:900;" }, ["1) Change position"]),
+        el("div", { class: "small" }, ["Stand up, or sit with both feet on the floor."]),
+      ]),
+      el("div", { style: "padding:10px 0;border-bottom:1px solid var(--line);" }, [
+        el("div", { style: "font-weight:900;" }, ["2) Exhale longer than inhale (x6)"]),
+        el("div", { class: "small" }, ["In 4 seconds → out 6 seconds. Repeat 6 times."]),
+      ]),
+      el("div", { style: "padding:10px 0;border-bottom:1px solid var(--line);" }, [
+        el("div", { style: "font-weight:900;" }, ["3) Put distance between you and anything dangerous"]),
+        el("div", { class: "small" }, ["Move to a safer room, or step outside near other people."]),
+      ]),
+      el("div", { style: "padding:10px 0;" }, [
+        el("div", { style: "font-weight:900;" }, ["4) Say this out loud"]),
+        el("div", { class: "small" }, ["“This is a surge. It will pass. My job is to not act.”"]),
+      ]),
+    ])
+  ]);
+
+  const praxisNext = el("div", { class: "card cardPad" }, [
+    el("div", { class: "badge" }, ["If you’re safe enough to use Praxis"]),
+    el("p", { class: "p" }, ["Pick one. Praxis will guide you."]),
+    el("div", { class: "btnRow" }, [
+      el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/yellow/calm") }, ["Calm Me Down"]),
+      el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/yellow/stop") }, ["Stop the Urge"]),
+      el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/move") }, ["Move Forward"]),
+    ]),
+    el("p", { class: "small", style: "margin-top:10px" }, [
+      "If risk spikes again, come back here and use 911/988 immediately."
+    ])
+  ]);
+
+  wrap.appendChild(header);
+  wrap.appendChild(immediate);
+  wrap.appendChild(stabilize);
+  wrap.appendChild(praxisNext);
+
   return wrap;
 }
