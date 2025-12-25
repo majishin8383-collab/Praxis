@@ -5,11 +5,8 @@ function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (k === "class") node.className = v;
-    else if (k.startsWith("on") && typeof v === "function") {
-      node.addEventListener(k.slice(2).toLowerCase(), v);
-    } else {
-      node.setAttribute(k, v);
-    }
+    else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
+    else node.setAttribute(k, v);
   }
   for (const child of children) {
     if (child == null) continue;
@@ -17,28 +14,56 @@ function el(tag, attrs = {}, children = []) {
   }
   return node;
 }
+const nowISO = () => new Date().toISOString();
 
-function nowISO() {
-  return new Date().toISOString();
+function copyToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).catch(() => window.prompt("Copy this message:", text));
+  } else {
+    window.prompt("Copy this message:", text);
+  }
 }
 
-// Universal, short, non-escalatory scripts.
-const SCRIPTS = [
+const SCRIPT_SETS = [
   {
-    label: "Neutral: later",
-    text: "Got your message. I’m not available right now. I’ll reply later."
+    id: "neutral",
+    title: "Neutral (later)",
+    desc: "Short. Calm. No fuel.",
+    variants: [
+      "Got your message. I’m not available right now. I’ll reply later.",
+      "I saw this. I can’t talk right now. I’ll respond later.",
+      "I’m tied up right now. I’ll get back to you later."
+    ]
   },
   {
-    label: "Boundary",
-    text: "I’m taking space and won’t be engaging. Please respect that."
+    id: "boundary",
+    title: "Boundary",
+    desc: "Clear. No debate.",
+    variants: [
+      "I’m taking space and won’t be engaging. Please respect that.",
+      "I’m not available for this conversation. Please stop contacting me about it.",
+      "I’m stepping back. I won’t respond further right now."
+    ]
   },
   {
-    label: "No explanation",
-    text: "I’m not going to discuss this."
+    id: "logistics",
+    title: "Logistics only",
+    desc: "Keep it practical.",
+    variants: [
+      "I can handle logistics. I’m not discussing anything else.",
+      "I’ll respond only to practical logistics. I’m not discussing the relationship.",
+      "If this is about logistics, I can reply. Otherwise I’m not engaging."
+    ]
   },
   {
-    label: "Logistics only",
-    text: "I can handle logistics. I’m not discussing anything else."
+    id: "deescalate",
+    title: "De-escalate",
+    desc: "Lower heat. Exit cleanly.",
+    variants: [
+      "I’m not going to argue. I’m stepping away for now.",
+      "This isn’t productive. I’m going to pause and revisit later.",
+      "I’m going to end this conversation now."
+    ]
   }
 ];
 
@@ -46,15 +71,14 @@ export function renderStopUrge() {
   const wrap = el("div", { class: "flowShell" });
 
   let running = false;
-  let baseMin = 2;
-  let durationMin = baseMin;
+  let durationMin = 2;
   let endAt = 0;
   let tick = null;
 
-  function stopTick() {
-    if (tick) window.clearInterval(tick);
-    tick = null;
-  }
+  let selectedSetId = "neutral";
+  let selectedVariantIndex = 0;
+
+  function stopTick() { if (tick) clearInterval(tick); tick = null; }
 
   function updateTimerUI() {
     const remaining = clamp(endAt - Date.now(), 0, durationMin * 60 * 1000);
@@ -71,16 +95,14 @@ export function renderStopUrge() {
     endAt = Date.now() + min * 60 * 1000;
 
     stopTick();
-    tick = window.setInterval(() => {
+    tick = setInterval(() => {
       if (!running) return;
       const remaining = endAt - Date.now();
       if (remaining <= 0) {
         stopTick();
         running = false;
         rerender("pause_done");
-      } else {
-        updateTimerUI();
-      }
+      } else updateTimerUI();
     }, 250);
 
     rerender("running");
@@ -94,36 +116,24 @@ export function renderStopUrge() {
     rerender("running");
   }
 
-  function copyToClipboard(text) {
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).catch(() => {
-        window.prompt("Copy this message:", text);
-      });
-    } else {
-      window.prompt("Copy this message:", text);
-    }
-  }
-
   function logOutcome(outcome, note) {
     appendLog({
       kind: "stop_urge",
       when: nowISO(),
       minutes: durationMin,
-      outcome, // "passed" | "still_present"
+      outcome,
       note
     });
   }
 
   function recentLogs() {
     const log = readLog().filter(e => e.kind === "stop_urge").slice(0, 6);
-
     if (!log.length) {
       return el("div", {}, [
         el("h2", { class: "h2" }, ["Recent Stop the Urge sessions"]),
         el("p", { class: "p" }, ["No entries yet. Run it once to create history automatically."]),
       ]);
     }
-
     return el("div", {}, [
       el("h2", { class: "h2" }, ["Recent Stop the Urge sessions"]),
       ...log.map(e =>
@@ -157,18 +167,17 @@ export function renderStopUrge() {
     if (!running) {
       return el("div", { class: "flowShell" }, [
         el("div", { class: "badge" }, ["Default pause: 2 minutes"]),
-        el("p", { class: "p" }, ["Your job: don’t send anything during the pause. Let the urge peak and fall."]),
+        el("p", { class: "p" }, ["Don’t send anything during the pause. Let the urge peak and fall."]),
         el("div", { class: "btnRow" }, [
           el("button", { class: "btn btnPrimary", type: "button", onClick: () => startPause(2) }, ["Start 2-minute pause"]),
           el("button", { class: "btn", type: "button", onClick: () => startPause(5) }, ["Start 5 min"]),
           el("button", { class: "btn", type: "button", onClick: () => startPause(10) }, ["Start 10 min"]),
         ]),
-        el("p", { class: "small" }, ["This is about delay, not perfection."]),
+        el("p", { class: "small" }, ["Delay beats regret."]),
       ]);
     }
 
     const remaining = clamp(endAt - Date.now(), 0, durationMin * 60 * 1000);
-
     return el("div", { class: "timerBox" }, [
       el("div", { class: "badge" }, [`Pause active • ${durationMin} min window`]),
       el("div", { class: "timerReadout", "data-timer-readout": "1" }, [formatMMSS(remaining)]),
@@ -178,30 +187,54 @@ export function renderStopUrge() {
       el("div", { class: "btnRow" }, [
         el("button", { class: "btn", type: "button", onClick: () => extend(5) }, ["+5 min"]),
         el("button", { class: "btn", type: "button", onClick: () => extend(10) }, ["+10 min"]),
-        el("button", {
-          class: "btn",
-          type: "button",
-          onClick: () => { running = false; stopTick(); rerender("stopped"); }
-        }, ["Stop"]),
+        el("button", { class: "btn", type: "button", onClick: () => { running = false; stopTick(); rerender("idle"); } }, ["Stop"]),
       ]),
-      el("p", { class: "small" }, ["If you feel compelled, copy a script instead of improvising."]),
+      el("p", { class: "small" }, ["If compelled: copy a script instead of improvising."]),
     ]);
   }
 
   function scriptsPanel() {
-    return el("div", { class: "flowShell" }, [
-      el("h2", { class: "h2" }, ["Scripts (tap to copy)"]),
-      el("p", { class: "p" }, ["Short. Neutral. No explaining."]),
-      el("div", { class: "btnRow" }, SCRIPTS.map(s =>
+    const set = SCRIPT_SETS.find(s => s.id === selectedSetId) || SCRIPT_SETS[0];
+    const text = set.variants[selectedVariantIndex] || set.variants[0];
+
+    const preview = el("div", {
+      class: "card cardPad",
+      style: "background:rgba(255,255,255,.04);border:1px solid var(--line);"
+    }, [
+      el("div", { class: "badge" }, ["Preview"]),
+      el("p", { class: "p", style: "margin-top:8px;font-weight:800;color:var(--text);" }, [text]),
+      el("div", { class: "btnRow" }, [
+        el("button", { class: "btn btnPrimary", type: "button", onClick: () => copyToClipboard(text) }, ["Copy this"]),
+      ]),
+      el("p", { class: "small", style: "margin-top:8px" }, ["Tip: If copy is blocked on mobile, it will pop up so you can copy manually."])
+    ]);
+
+    const setButtons = el("div", { class: "btnRow" }, SCRIPT_SETS.map(s =>
+      el("button", {
+        class: "btn",
+        type: "button",
+        onClick: () => { selectedSetId = s.id; selectedVariantIndex = 0; rerender("idle"); }
+      }, [s.title])
+    ));
+
+    const variants = el("div", { class: "flowShell" }, [
+      el("h2", { class: "h2" }, ["Options"]),
+      el("p", { class: "small" }, [set.desc]),
+      el("div", { class: "btnRow" }, set.variants.map((v, idx) =>
         el("button", {
           class: "btn",
           type: "button",
-          onClick: () => copyToClipboard(s.text),
-        }, [s.label])
+          onClick: () => { selectedVariantIndex = idx; rerender("idle"); }
+        }, [`Option ${idx + 1}`])
       )),
-      el("div", { class: "card cardPad" }, [
-        el("div", { class: "small" }, ["Tip: If copy is blocked on mobile, it will pop up so you can copy manually."])
-      ])
+    ]);
+
+    return el("div", { class: "flowShell" }, [
+      el("h2", { class: "h2" }, ["Scripts"]),
+      el("p", { class: "p" }, ["Pick a category, preview, then copy."]),
+      setButtons,
+      preview,
+      variants,
     ]);
   }
 
