@@ -1,9 +1,10 @@
 import { readLog } from "./storage.js";
 
-const BUILD_HOME = "UI-SUG-4";
+const BUILD_HOME = "UI-SUG-5";
 
 const KEY_DONE = "praxis_onboarding_done";
 const KEY_SNOOZE_UNTIL = "praxis_suggest_snooze_until";
+const KEY_SAFETY_SNOOZE_UNTIL = "praxis_safety_snooze_until";
 const KEY_LAST_EMERGENCY = "praxis_last_emergency_ts";
 
 function el(tag, attrs = {}, children = []) {
@@ -25,26 +26,25 @@ function onboardingDone() {
   try { return localStorage.getItem(KEY_DONE) === "1"; } catch { return false; }
 }
 
-function getSnoozeUntil() {
+function getUntil(key) {
   try {
-    const v = Number(localStorage.getItem(KEY_SNOOZE_UNTIL) || "0");
+    const v = Number(localStorage.getItem(key) || "0");
     return Number.isFinite(v) ? v : 0;
-  } catch { return 0; }
+  } catch {
+    return 0;
+  }
 }
-
-function isSnoozed() {
-  return Date.now() < getSnoozeUntil();
+function isSnoozedKey(key) {
+  return Date.now() < getUntil(key);
 }
-
-function snooze(hours = 2) {
+function snoozeKey(key, hours = 2) {
   try {
     const until = Date.now() + hours * 60 * 60 * 1000;
-    localStorage.setItem(KEY_SNOOZE_UNTIL, String(until));
+    localStorage.setItem(key, String(until));
   } catch {}
 }
-
-function clearSnooze() {
-  try { localStorage.setItem(KEY_SNOOZE_UNTIL, "0"); } catch {}
+function clearKey(key) {
+  try { localStorage.setItem(key, "0"); } catch {}
 }
 
 function getLastEmergencyMs() {
@@ -89,13 +89,10 @@ function rerenderHomeIfActive() {
   return false;
 }
 
-// ✅ Safety should NOT be blocked by snooze
 function hasRecentEmergencyFromSession() {
   const lastEm = getLastEmergencyMs();
   return !!(lastEm && (Date.now() - lastEm) <= 60 * 60 * 1000);
 }
-
-// fallback for older sessions (nice-to-have)
 function hasRecentEmergencyFromLog(log) {
   const lastEmergency = log.find(e => e.kind === "emergency_open");
   return !!(lastEmergency && minutesAgo(lastEmergency.when) <= 60);
@@ -105,29 +102,32 @@ function computeSuggestion() {
   let log = [];
   try { log = readLog().slice(0, 120); } catch { log = []; }
 
-  // ✅ RULE 0: Safety overrides snooze, always
-  if (hasRecentEmergencyFromSession() || hasRecentEmergencyFromLog(log)) {
+  const safetyActive = hasRecentEmergencyFromSession() || hasRecentEmergencyFromLog(log);
+  const safetySnoozed = isSnoozedKey(KEY_SAFETY_SNOOZE_UNTIL);
+
+  // ✅ RULE 0: Safety is highest priority, but can be hidden for 2 hours
+  if (safetyActive && !safetySnoozed) {
     return {
+      type: "safety",
       badge: "Safety",
       title: "Stabilize first",
       text: "If safety is still at risk, use Emergency now. If you’re safe enough, do Calm for 2 minutes.",
       primary: { label: "Calm Me Down", to: "#/yellow/calm" },
       secondary: { label: "Emergency", to: "#/red/emergency" },
-      allowDismiss: false, // we’ll show Hide instead of Dismiss
     };
   }
 
-  // Normal suggestions can be snoozed
-  if (isSnoozed()) return null;
+  // Normal suggestions respect normal snooze
+  if (isSnoozedKey(KEY_SNOOZE_UNTIL)) return null;
 
   if (!log.length) {
     return {
+      type: "normal",
       badge: "Quick Start",
       title: "Start with Calm",
       text: "If you’re unsure, don’t think—reduce intensity first.",
       primary: { label: "Calm Me Down", to: "#/yellow/calm" },
       secondary: { label: "How it works", to: "#/onboarding" },
-      allowDismiss: true,
     };
   }
 
@@ -139,12 +139,12 @@ function computeSuggestion() {
   if (lastClarify && minutesAgo(lastClarify.when) <= 360) {
     const to = routeForClarifyMove(lastClarify.move);
     return {
+      type: "normal",
       badge: "Lock → Do",
       title: "Do the move you locked",
       text: lastClarify.statement,
       primary: { label: "Do it now", to },
       secondary: { label: "Run Clarify", to: "#/reflect" },
-      allowDismiss: true,
     };
   }
 
@@ -153,67 +153,67 @@ function computeSuggestion() {
   const stillPresentCount = recentUrge.filter(e => e.outcome === "still_present").length;
   if (lastUrge && (lastUrge.outcome === "still_present" || stillPresentCount >= 2)) {
     return {
+      type: "normal",
       badge: "Loop detected",
       title: "Shift the state, then decide",
       text: "Run Calm for 2 minutes, then re-run Stop the Urge. Don’t improvise.",
       primary: { label: "Calm Me Down", to: "#/yellow/calm" },
       secondary: { label: "Stop the Urge", to: "#/yellow/stop" },
-      allowDismiss: true,
     };
   }
 
   const calmToday = today.filter(e => e.kind === "calm").length;
   if (calmToday >= 2) {
     return {
+      type: "normal",
       badge: "Next phase",
       title: "Convert calm into progress",
       text: "You’ve stabilized. Now use movement to break the loop.",
       primary: { label: "Move Forward", to: "#/green/move" },
       secondary: { label: "Find Next Step", to: "#/green/next" },
-      allowDismiss: true,
     };
   }
 
   if (today.length === 0) {
     return {
+      type: "normal",
       badge: "Start here",
       title: "Choose today’s lane",
       text: "Pick one direction for today so your brain stops bargaining.",
       primary: { label: "Today’s Direction", to: "#/green/direction" },
       secondary: { label: "Today’s Plan", to: "#/green/today" },
-      allowDismiss: true,
     };
   }
 
   if (last.kind === "direction") {
     return {
+      type: "normal",
       badge: "Next step",
       title: "Turn direction into a plan",
       text: "Pick a simple 3-step plan for today.",
       primary: { label: "Today’s Plan", to: "#/green/today" },
       secondary: { label: "Find Next Step", to: "#/green/next" },
-      allowDismiss: true,
     };
   }
 
   if (last.kind === "move_forward") {
     return {
+      type: "normal",
       badge: "Lock it",
       title: "Clarify the next move",
       text: "After momentum, lock one move so you don’t drift back into thinking.",
       primary: { label: "Clarify", to: "#/reflect" },
       secondary: { label: "History", to: "#/history" },
-      allowDismiss: true,
     };
   }
 
   return {
+    type: "normal",
     badge: "Suggestion",
     title: "Find your next step",
     text: "Tap a move. Don’t negotiate with the moment.",
     primary: { label: "Find Next Step", to: "#/green/next" },
     secondary: { label: "Clarify", to: "#/reflect" },
-    allowDismiss: true,
   };
 }
 
@@ -282,7 +282,8 @@ function suggestionCard() {
   const s = computeSuggestion();
   if (!s) return null;
 
-  const hideLabel = s.allowDismiss === false ? "Hide (2h)" : "Dismiss";
+  const hideKey = s.type === "safety" ? KEY_SAFETY_SNOOZE_UNTIL : KEY_SNOOZE_UNTIL;
+  const hideLabel = "Hide (2h)";
 
   return el("div", { class: "card cardPad" }, [
     el("div", { class: "badge" }, [s.badge || "Suggestion"]),
@@ -294,7 +295,7 @@ function suggestionCard() {
       el("button", {
         class: "btn",
         type: "button",
-        onClick: () => { snooze(2); rerenderHomeIfActive() || (location.hash = "#/home"); }
+        onClick: () => { snoozeKey(hideKey, 2); rerenderHomeIfActive() || (location.hash = "#/home"); }
       }, [hideLabel]),
     ])
   ]);
@@ -303,23 +304,38 @@ function suggestionCard() {
 export function renderHome() {
   const wrap = el("div", { class: "homeShell" });
 
-  const snoozed = isSnoozed();
-  const safetyActive = hasRecentEmergencyFromSession(); // if true, we shouldn’t show "Show suggestions" gate
+  const normalSnoozed = isSnoozedKey(KEY_SNOOZE_UNTIL);
+  const safetyActive = hasRecentEmergencyFromSession();
+  const safetySnoozed = isSnoozedKey(KEY_SAFETY_SNOOZE_UNTIL);
+
+  // Header controls:
+  // - If Safety is active but snoozed => show "Show safety"
+  // - Else if normal snoozed => show "Show suggestions"
+  const headerButtons = [];
+  if (safetyActive && safetySnoozed) {
+    headerButtons.push(
+      el("button", {
+        class: "btn",
+        type: "button",
+        onClick: () => { clearKey(KEY_SAFETY_SNOOZE_UNTIL); rerenderHomeIfActive() || (location.hash = "#/home"); }
+      }, ["Show safety"])
+    );
+  } else if (normalSnoozed) {
+    headerButtons.push(
+      el("button", {
+        class: "btn",
+        type: "button",
+        onClick: () => { clearKey(KEY_SNOOZE_UNTIL); rerenderHomeIfActive() || (location.hash = "#/home"); }
+      }, ["Show suggestions"])
+    );
+  }
 
   wrap.appendChild(
     el("div", { class: "homeHeader" }, [
       el("h1", { class: "h1" }, ["Reset"]),
       el("p", { class: "p" }, ["Choose the next right action. Praxis will guide the rest."]),
       el("div", { class: "small" }, [`Home ${BUILD_HOME}`]),
-      (snoozed && !safetyActive)
-        ? el("div", { class: "btnRow", style: "margin-top:10px" }, [
-            el("button", {
-              class: "btn",
-              type: "button",
-              onClick: () => { clearSnooze(); rerenderHomeIfActive() || (location.hash = "#/home"); }
-            }, ["Show suggestions"])
-          ])
-        : null
+      headerButtons.length ? el("div", { class: "btnRow", style: "margin-top:10px" }, headerButtons) : null,
     ].filter(Boolean))
   );
 
