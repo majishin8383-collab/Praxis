@@ -1,7 +1,7 @@
 import { appendLog, readLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "SU-5";
+const BUILD = "SU-7";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -20,11 +20,7 @@ function el(tag, attrs = {}, children = []) {
 const nowISO = () => new Date().toISOString();
 
 function safeAppendLog(entry) {
-  try {
-    appendLog(entry);
-  } catch {
-    // ignore
-  }
+  try { appendLog(entry); } catch {}
 }
 
 function copyToClipboard(text) {
@@ -81,24 +77,24 @@ const SCRIPT_SETS = [
 export function renderStopUrge() {
   const wrap = el("div", { class: "flowShell" });
 
-  // --- state ---
   let running = false;
   let durationMin = 2;
+  let startAt = 0;
   let endAt = 0;
   let tick = null;
 
   let selectedSetId = "neutral";
   let selectedVariantIndex = 0;
 
-  let currentMode = "idle"; // "idle" | "running" | "pause_done" | "logged"
+  let currentMode = "idle"; // "idle" | "running" | "pause_done" | "early_stop" | "logged"
   let lastOutcome = null;   // "passed" | "still_present" | null
 
-  // --- log: opened ---
-  safeAppendLog({
-    kind: "stop_urge_open",
-    when: nowISO(),
-    build: BUILD
-  });
+  // early stop telemetry
+  let stoppedEarly = false;
+  let earlyStopElapsedSec = 0;
+  let earlyStopReason = null; // "safe" | "bailed" | null
+
+  safeAppendLog({ kind: "stop_urge_open", when: nowISO(), build: BUILD });
 
   function stopTick() {
     if (tick) clearInterval(tick);
@@ -117,16 +113,16 @@ export function renderStopUrge() {
   function startPause(min) {
     running = true;
     lastOutcome = null;
+
+    stoppedEarly = false;
+    earlyStopElapsedSec = 0;
+    earlyStopReason = null;
+
     durationMin = min;
+    startAt = Date.now();
     endAt = Date.now() + min * 60 * 1000;
 
-    // --- log: started ---
-    safeAppendLog({
-      kind: "stop_urge_start",
-      when: nowISO(),
-      minutes: min,
-      build: BUILD
-    });
+    safeAppendLog({ kind: "stop_urge_start", when: nowISO(), minutes: min, build: BUILD });
 
     stopTick();
     tick = setInterval(() => {
@@ -164,20 +160,45 @@ export function renderStopUrge() {
 
   function logOutcome(outcome, note) {
     lastOutcome = outcome;
-
     const s = selectedScriptText();
 
     safeAppendLog({
       kind: "stop_urge",
       when: nowISO(),
       minutes: durationMin,
-      outcome, // "passed" | "still_present"
+      outcome,
       note,
+      stoppedEarly,
+      earlyStopReason,
+      earlyStopElapsedSec,
       scriptSetId: s.setId,
       scriptSetTitle: s.setTitle,
       scriptOption: (s.optionIndex ?? 0) + 1,
       build: BUILD
     });
+  }
+
+  function stopEarly() {
+    const now = Date.now();
+    const elapsedMs = startAt ? clamp(now - startAt, 0, durationMin * 60 * 1000) : 0;
+    const remainingMs = clamp(endAt - now, 0, durationMin * 60 * 1000);
+
+    stopTick();
+    running = false;
+
+    stoppedEarly = true;
+    earlyStopElapsedSec = Math.max(0, Math.round(elapsedMs / 1000));
+
+    safeAppendLog({
+      kind: "stop_urge_stop",
+      when: nowISO(),
+      minutesPlanned: durationMin,
+      elapsedSec: Math.round(elapsedMs / 1000),
+      remainingSec: Math.round(remainingMs / 1000),
+      build: BUILD
+    });
+
+    rerender("early_stop");
   }
 
   function recentLogs() {
@@ -196,7 +217,7 @@ export function renderStopUrge() {
           el("div", { class: "small" }, [
             `${new Date(e.when).toLocaleString()} • ${e.minutes ?? ""} min • ${
               e.outcome === "passed" ? "Urge passed" : "Urge still present"
-            }`
+            }${e.stoppedEarly ? " • stopped early" : ""}`
           ]),
         ])
       )
@@ -214,11 +235,7 @@ export function renderStopUrge() {
         el("button", {
           class: "linkBtn",
           type: "button",
-          onClick: () => {
-            running = false;
-            stopTick();
-            location.hash = "#/home";
-          }
+          onClick: () => { running = false; stopTick(); location.hash = "#/home"; }
         }, ["Reset"]),
       ])
     ]);
@@ -247,15 +264,7 @@ export function renderStopUrge() {
       el("div", { class: "btnRow" }, [
         el("button", { class: "btn", type: "button", onClick: () => extend(5) }, ["+5 min"]),
         el("button", { class: "btn", type: "button", onClick: () => extend(10) }, ["+10 min"]),
-        el("button", {
-          class: "btn",
-          type: "button",
-          onClick: () => {
-            running = false;
-            stopTick();
-            rerender("idle");
-          }
-        }, ["Stop"]),
+        el("button", { class: "btn", type: "button", onClick: () => stopEarly() }, ["Stop"]),
       ]),
     ]);
   }
@@ -305,9 +314,38 @@ export function renderStopUrge() {
   }
 
   function statusCard(mode) {
+    if (mode === "early_stop") {
+      return el("div", { class: "card cardPad" }, [
+        el("div", { class: "badge" }, ["Stopped early"]),
+        el("p", { class: "p" }, [
+          `You paused for ${earlyStopElapsedSec}s. Why are you stopping?`
+        ]),
+        el("div", { class: "btnRow" }, [
+          el("button", {
+            class: "btn btnPrimary",
+            type: "button",
+            onClick: () => { earlyStopReason = "safe"; rerender("pause_done"); }
+          }, ["It dropped / situation ended"]),
+          el("button", {
+            class: "btn",
+            type: "button",
+            onClick: () => {
+              earlyStopReason = "bailed";
+              // route to the “do-not-improvise” path immediately
+              rerender("logged");
+              lastOutcome = "still_present";
+            }
+          }, ["I’m still hot / about to act"]),
+        ]),
+        el("p", { class: "small", style: "margin-top:10px" }, [
+          "Honesty helps Praxis guide you correctly."
+        ]),
+      ]);
+    }
+
     if (mode === "pause_done") {
       return el("div", { class: "card cardPad" }, [
-        el("div", { class: "badge" }, ["Pause complete"]),
+        el("div", { class: "badge" }, [stoppedEarly ? "Check-in" : "Pause complete"]),
         el("p", { class: "p" }, ["Choose what’s true right now."]),
         el("div", { class: "btnRow" }, [
           el("button", {
@@ -321,9 +359,6 @@ export function renderStopUrge() {
             onClick: () => { logOutcome("still_present", "Urge still present."); rerender("logged"); }
           }, ["Still present"]),
         ]),
-        el("p", { class: "small", style: "margin-top:10px" }, [
-          "If it’s still present, don’t debate it. Extend the pause or change state (Calm)."
-        ]),
       ]);
     }
 
@@ -331,15 +366,20 @@ export function renderStopUrge() {
       const passed = lastOutcome === "passed";
       const still = lastOutcome === "still_present";
 
+      const headline =
+        still && earlyStopReason === "bailed"
+          ? "Don’t improvise. Change state or add time."
+          : passed
+          ? "Good. Convert that win into motion."
+          : still
+          ? "Okay. Don’t improvise. Change state or add more time."
+          : "Logged. Choose the next right action.";
+
+      // If they bailed, we should not pretend it’s logged as passed.
+      // If they bailed, we also encourage Emergency as a clean exit option.
       return el("div", { class: "card cardPad" }, [
-        el("div", { class: "badge" }, ["Saved"]),
-        el("p", { class: "p" }, [
-          passed
-            ? "Good. Convert that win into motion."
-            : still
-            ? "Okay. Don’t improvise. Change state or add more time."
-            : "Logged. Choose the next right action."
-        ]),
+        el("div", { class: "badge" }, ["Next move"]),
+        el("p", { class: "p" }, [headline]),
         el("div", { class: "btnRow" }, [
           passed
             ? el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/green/move") }, ["Move Forward"])
@@ -359,7 +399,6 @@ export function renderStopUrge() {
       ]);
     }
 
-    // idle/running
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["When you’re ready"]),
       el("p", { class: "p" }, ["Start a pause. If needed, use a script."]),
@@ -376,9 +415,7 @@ export function renderStopUrge() {
       timerPanel(),
     ]);
 
-    // Status card BETWEEN Pause and Scripts (your preferred layout)
     const status = statusCard(mode);
-
     const scriptsCard = el("div", { class: "card cardPad" }, [scriptsPanel()]);
     const logCard = el("div", { class: "card cardPad" }, [recentLogs()]);
 
