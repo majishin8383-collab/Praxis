@@ -1,15 +1,18 @@
 import { appendLog, readLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "TP-6";
-const KEY = "praxis_today_plan_v5"; // keep same key so users don't lose their saved plan
+const BUILD = "TP-7";
+const KEY = "praxis_today_plan_v5"; // keep same key so users don't lose saved plan
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
+    if (v === null || v === undefined || v === false) continue;
+
     if (k === "class") node.className = v;
     else if (k === "html") node.innerHTML = v;
     else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (v === true) node.setAttribute(k, "");
     else node.setAttribute(k, v);
   }
   for (const child of children) {
@@ -25,9 +28,7 @@ function safeAppendLog(entry) { try { appendLog(entry); } catch {} }
 function readState() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) {
-      return { template: "", a: "", b: "", c: "", doneStep: 0 };
-    }
+    if (!raw) return { template: "", a: "", b: "", c: "", doneStep: 0 };
     const s = JSON.parse(raw);
     return {
       template: s.template || "",
@@ -65,8 +66,8 @@ export function renderTodayPlan() {
   let tick = null;
 
   // UI state
-  let showRefine = false;   // collapsed by default
-  let statusMode = "idle";  // idle | running | checkout | logged | early_stop
+  let showRefine = false;
+  let statusMode = "idle"; // idle | running | checkout | logged | early_stop
   let stoppedEarly = false;
   let earlyStopElapsedSec = 0;
   let earlyStopReason = null; // safe | bailed | null
@@ -265,7 +266,7 @@ export function renderTodayPlan() {
       el("input", {
         value: state[key],
         placeholder: locked ? "Locked until previous step is done…" : "Small + concrete…",
-        disabled: locked ? "true" : null,
+        disabled: locked ? true : false,
         style:
           "width:100%;padding:12px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);opacity:" +
           (locked ? "0.65" : "1") +
@@ -304,13 +305,13 @@ export function renderTodayPlan() {
         class: `btn ${activeStep === 2 ? "btnPrimary" : ""}`.trim(),
         type: "button",
         onClick: () => { activeStep = 2; rerender(); },
-        disabled: canStartStep(2) ? null : "true"
+        disabled: canStartStep(2) ? false : true
       }, ["Step 2"]),
       el("button", {
         class: `btn ${activeStep === 3 ? "btnPrimary" : ""}`.trim(),
         type: "button",
         onClick: () => { activeStep = 3; rerender(); },
-        disabled: canStartStep(3) ? null : "true"
+        disabled: canStartStep(3) ? false : true
       }, ["Step 3"]),
     ]);
 
@@ -330,7 +331,7 @@ export function renderTodayPlan() {
           class: "btn btnPrimary",
           type: "button",
           onClick: () => startTimer("step"),
-          disabled: (currentText && canStartStep(activeStep)) ? null : "true"
+          disabled: !(currentText && canStartStep(activeStep))
         }, ["Start Step"]),
         el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/move") }, ["Move Forward"]),
       ]),
@@ -361,7 +362,7 @@ export function renderTodayPlan() {
           class: "btn",
           type: "button",
           onClick: () => { timerMode = "plan"; startTimer("plan"); },
-          disabled: any ? null : "true"
+          disabled: !any
         }, ["Start refine sprint"]),
         el("button", { class: "btn", type: "button", onClick: () => { showRefine = false; rerender(); } }, ["Hide"])
       ])
