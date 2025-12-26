@@ -52,9 +52,9 @@ const LADDERS = [
   {
     id: "micro_task",
     title: "Micro-task (2 minutes)",
-    desc: "Small win to restart momentum.",
+    desc: "Small action to restart momentum.",
     minutes: 2,
-    steps: ["Pick ONE tiny task (email / dishes / timer).", "Set 2 minutes. Start before thinking.", "When it ends: stop. You win either way."]
+    steps: ["Pick ONE tiny task (email / dishes / timer).", "Set 2 minutes. Start before thinking.", "When it ends: stop. That counts."]
   },
   {
     id: "outside_reset",
@@ -250,7 +250,7 @@ export function renderMoveForward() {
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["Move Forward"]),
-        el("p", { class: "p" }, ["Tap a ladder → then press Start. Move first. Thinking comes later."]),
+        el("p", { class: "p" }, ["Tap a ladder → then press Start. Move first. Think later."]),
         el("div", { class: "small" }, [`Build ${BUILD}`]),
       ]),
       el("div", { class: "flowMeta" }, [
@@ -262,7 +262,7 @@ export function renderMoveForward() {
   function ladderPickerCard() {
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["Pick a ladder"]),
-      el("p", { class: "p" }, ["Tap one. Then hit Start."]),
+      el("p", { class: "p" }, ["Tap one. Then press Start."]),
       el("div", { class: "flowShell" }, LADDERS.map(l =>
         el("button", {
           class: "actionTile",
@@ -402,7 +402,7 @@ export function renderMoveForward() {
     // pick / ready / running helper status
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["Rule"]),
-      el("p", { class: "p" }, ["Move first. Thinking comes later."]),
+      el("p", { class: "p" }, ["Move first. Think later."]),
     ]);
   }
 
