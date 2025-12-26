@@ -5,10 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Praxis</title>
 
-  <!-- Auto CSS loader with cache bust -->
+  <!-- 🔒 GLOBAL BUILD ID (CHANGE THIS PER DEPLOY) -->
+  <script>
+    window.__BUILD__ = "v2-20251226a";
+  </script>
+
+  <!-- Auto CSS loader with stable cache bust -->
   <script>
     (function () {
-      const v = Date.now();
+      const v = window.__BUILD__;
       const styles = [
         "./styles/base.css",
         "./styles/components.css",
@@ -53,9 +58,9 @@
 
   </div>
 
-  <!-- Auto JS cache bust (unchanged, already working) -->
+  <!-- Auto JS loader with SAME build ID -->
   <script type="module">
-    import(`./js/app.js?v=${Date.now()}`);
+    import("./js/app.js?v=" + window.__BUILD__);
   </script>
 </body>
 </html>
