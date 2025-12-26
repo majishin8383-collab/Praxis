@@ -1,7 +1,7 @@
 import { appendLog, readLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "TP-10";
+const BUILD = "TP-11";
 const KEY = "praxis_today_plan_v5";
 
 function el(tag, attrs = {}, children = []) {
@@ -51,35 +51,36 @@ const TEMPLATES = [
   { id: "recovery", label: "Recovery", a: "Eat / hydrate", b: "Shower or reset body", c: "Early night / low stimulation" },
 ];
 
+// ✅ FIX: detect patterns like "2-min", "5-min", "10-mins"
 function detectMinutes(text) {
   if (!text) return null;
   const t = String(text).toLowerCase();
 
-  // "1 hour" / "2 hours"
+  // 0) "2-min" / "2-mins" / "2-minutes"
+  const hyMin = t.match(/(\d+)\s*-\s*(min|mins|minute|minutes)\b/);
+  if (hyMin) {
+    const n = parseInt(hyMin[1], 10);
+    if (Number.isFinite(n) && n > 0) return Math.min(60, n);
+  }
+
+  // 1) "1 hour" / "2 hours"
   const hr = t.match(/(\d+)\s*(hour|hours|hr|hrs)\b/);
   if (hr) {
     const n = parseInt(hr[1], 10);
     if (Number.isFinite(n) && n > 0) return Math.min(180, n * 60); // cap 3h
   }
 
-  // "10–25 min" or "10-25 min" -> take the first number
+  // 2) "10–25 min" or "10-25 min" -> take the first number
   const range = t.match(/(\d+)\s*[–-]\s*(\d+)\s*(min|mins|minute|minutes)\b/);
   if (range) {
     const n = parseInt(range[1], 10);
     if (Number.isFinite(n) && n > 0) return Math.min(60, n);
   }
 
-  // "25 min" / "25mins" / "25min"
+  // 3) "25 min" / "25mins" / "25min"
   const m = t.match(/(\d+)\s*(min|mins|minute|minutes|m)\b/);
   if (m) {
     const n = parseInt(m[1], 10);
-    if (Number.isFinite(n) && n > 0) return Math.min(60, n);
-  }
-
-  // "2-minute"
-  const m2 = t.match(/(\d+)\s*-\s*(minute|minutes)\b/);
-  if (m2) {
-    const n = parseInt(m2[1], 10);
     if (Number.isFinite(n) && n > 0) return Math.min(60, n);
   }
 
@@ -187,7 +188,6 @@ export function renderTodayPlan() {
   }
 
   function continueAfterStuck(extraMin) {
-    // Only callable from "offer_continue"
     liveDurationMin = Math.max(1, extraMin);
     running = true;
 
@@ -245,7 +245,7 @@ export function renderTodayPlan() {
   }
 
   function logStep(result) {
-    lastOutcome = result; // done | stuck
+    lastOutcome = result;
     safeAppendLog({
       kind: "today_plan_step",
       when: nowISO(),
