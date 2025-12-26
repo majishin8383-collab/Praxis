@@ -22,10 +22,10 @@ const PLANS = [
   {
     id: "stability",
     title: "Stability Day",
-    sub: "Lower intensity and stay steady",
+    sub: "Lower intensity. Stay steady.",
     steps: [
       "Calm Me Down (2 min)",
-      "Move Forward: Reset Your Body (2 min)",
+      "Move Forward: reset your body (2 min)",
       "One small maintenance task (10 min)"
     ],
     primary: { label: "Start Calm", to: "#/yellow/calm" },
@@ -34,11 +34,11 @@ const PLANS = [
   {
     id: "maintenance",
     title: "Maintenance Day",
-    sub: "Keep life from sliding backward",
+    sub: "Keep things from sliding backward.",
     steps: [
-      "Move Forward: Make One Area Better (10 min)",
+      "Move Forward: make one area better (10 min)",
       "Today’s Plan: write 3 steps",
-      "Complete the easiest step first"
+      "Do the easiest step first"
     ],
     primary: { label: "Open Today’s Plan", to: "#/green/today" },
     secondary: { label: "Move Forward", to: "#/green/move" }
@@ -46,19 +46,19 @@ const PLANS = [
   {
     id: "progress",
     title: "Progress Day",
-    sub: "Do one meaningful thing",
+    sub: "Do one meaningful thing.",
     steps: [
-      "Move Forward: One Useful Task (25 min)",
+      "Move Forward: one useful task (25 min)",
       "Repeat once if energy is there",
-      "Stop when timer ends"
+      "Stop when the timer ends"
     ],
     primary: { label: "Start 25 min", to: "#/green/move" },
-    secondary: { label: "Focus Sprint", to: "#/green/focus" }
+    secondary: { label: "Focus", to: "#/green/focus" }
   },
   {
     id: "recovery",
     title: "Recovery Day",
-    sub: "Heal + protect the future you",
+    sub: "Recover and protect tomorrow.",
     steps: [
       "Calm Me Down (2 min)",
       "Short movement (5 min)",
@@ -76,7 +76,7 @@ export function renderDirection() {
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["Choose Today’s Direction"]),
-        el("p", { class: "p" }, ["Tap one. You’ll get a simple plan immediately."]),
+        el("p", { class: "p" }, ["Tap one. Get a simple plan now."]),
       ]),
       // Reset button hidden by CSS; safe to keep
       el("div", { class: "flowMeta" }, [
@@ -125,7 +125,7 @@ export function renderDirection() {
         el("button", { class: "btn", type: "button", onClick: () => rerenderList() }, ["Pick a different direction"]),
         el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
       ]),
-      el("p", { class: "small", style: "margin-top:8px" }, ["Rule: stop when the timer ends. Don’t expand the mission."]),
+      el("p", { class: "small", style: "margin-top:8px" }, ["Rule: stop when the timer ends. Keep it small."]),
     ]));
   }
 
@@ -135,7 +135,7 @@ export function renderDirection() {
 
     wrap.appendChild(el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["Pick a lane"]),
-      el("p", { class: "small" }, ["This is not a schedule. It’s a direction."]),
+      el("p", { class: "small" }, ["This is a direction, not a schedule."]),
     ]));
 
     wrap.appendChild(el("div", { class: "flowShell" }, PLANS.map(planCard)));
