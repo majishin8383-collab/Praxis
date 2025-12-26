@@ -51,33 +51,29 @@ const TEMPLATES = [
   { id: "recovery", label: "Recovery", a: "Eat / hydrate", b: "Shower or reset body", c: "Early night / low stimulation" },
 ];
 
-// ✅ FIX: detect patterns like "2-min", "5-min", "10-mins"
+// detect patterns like "2-min", "5-min", "10-mins"
 function detectMinutes(text) {
   if (!text) return null;
   const t = String(text).toLowerCase();
 
-  // 0) "2-min" / "2-mins" / "2-minutes"
   const hyMin = t.match(/(\d+)\s*-\s*(min|mins|minute|minutes)\b/);
   if (hyMin) {
     const n = parseInt(hyMin[1], 10);
     if (Number.isFinite(n) && n > 0) return Math.min(60, n);
   }
 
-  // 1) "1 hour" / "2 hours"
   const hr = t.match(/(\d+)\s*(hour|hours|hr|hrs)\b/);
   if (hr) {
     const n = parseInt(hr[1], 10);
-    if (Number.isFinite(n) && n > 0) return Math.min(180, n * 60); // cap 3h
+    if (Number.isFinite(n) && n > 0) return Math.min(180, n * 60);
   }
 
-  // 2) "10–25 min" or "10-25 min" -> take the first number
   const range = t.match(/(\d+)\s*[–-]\s*(\d+)\s*(min|mins|minute|minutes)\b/);
   if (range) {
     const n = parseInt(range[1], 10);
     if (Number.isFinite(n) && n > 0) return Math.min(60, n);
   }
 
-  // 3) "25 min" / "25mins" / "25min"
   const m = t.match(/(\d+)\s*(min|mins|minute|minutes|m)\b/);
   if (m) {
     const n = parseInt(m[1], 10);
@@ -132,9 +128,9 @@ export function renderTodayPlan() {
   }
 
   function goalLine() {
-    if (activeStep === 1) return "Goal: Step 1 only.";
-    if (activeStep === 2) return "Goal: Step 2 only.";
-    return "Goal: Step 3 only.";
+    if (activeStep === 1) return "Rule: Step 1 only.";
+    if (activeStep === 2) return "Rule: Step 2 only.";
+    return "Rule: Step 3 only.";
   }
 
   function updateTimerUI() {
@@ -276,7 +272,7 @@ export function renderTodayPlan() {
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["Today’s Plan"]),
-        el("p", { class: "p" }, ["Three steps only. Do Step 1 first."]),
+        el("p", { class: "p" }, ["Pick 3 steps. Then do Step 1."]),
         el("div", { class: "small" }, [`Build ${BUILD}`]),
       ]),
       el("div", { class: "flowMeta" }, [
@@ -287,13 +283,13 @@ export function renderTodayPlan() {
 
   function templatesCard() {
     return el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["Templates"]),
-      el("p", { class: "small" }, ["Tap to fill. Then keep it small."]),
+      el("div", { class: "badge" }, ["Quick templates"]),
+      el("p", { class: "small" }, ["Tap one to fill. Edit if needed."]),
       el("div", { class: "btnRow" }, TEMPLATES.map(t =>
         el("button", { class: "btn", type: "button", onClick: () => applyTemplate(t) }, [t.label])
       )),
       el("div", { class: "btnRow" }, [
-        el("button", { class: "btn", type: "button", onClick: clearAll }, ["Clear"]),
+        el("button", { class: "btn", type: "button", onClick: clearAll }, ["Clear plan"]),
       ]),
     ]);
   }
@@ -303,7 +299,7 @@ export function renderTodayPlan() {
       el("div", { class: "small" }, [label]),
       el("input", {
         value: state[key],
-        placeholder: locked ? "Locked until previous step is done…" : "Small + concrete…",
+        placeholder: locked ? "Locked until the previous step is done…" : "Small + concrete… (add a time if you want)",
         disabled: locked ? true : false,
         style:
           "width:100%;padding:12px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);opacity:" +
@@ -323,10 +319,10 @@ export function renderTodayPlan() {
 
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["Your 3 steps"]),
+      el("p", { class: "small" }, ["Keep each step tiny. If it doesn’t fit, it’s not for today."]),
       stepInput("Step 1", "a", false),
       stepInput("Step 2", "b", lock2),
       stepInput("Step 3", "c", lock3),
-      el("p", { class: "small" }, ["Rule: if it doesn’t fit in 3 steps, it’s not for today."]),
     ]);
   }
 
@@ -358,18 +354,18 @@ export function renderTodayPlan() {
       el("div", { class: "badge" }, ["Do this now"]),
       stepButtons,
       el("p", { class: "p", style: "margin-top:8px;font-weight:900;" }, [
-        currentText ? currentText : "Add text to this step above."
+        currentText ? currentText : "Write Step 1 above first."
       ]),
       currentText
-        ? el("p", { class: "small", style: "margin-top:8px" }, [`Timer: ${autoMin} min (from the step)`])
-        : el("p", { class: "small", style: "margin-top:8px" }, ["Timer: 10 min default (add a time to override)."]),
+        ? el("p", { class: "small", style: "margin-top:8px" }, [`Time: ${autoMin} min (pulled from the step)`])
+        : el("p", { class: "small", style: "margin-top:8px" }, ["Time: defaults to 10 min unless you include a time in the step."]),
       el("div", { class: "btnRow" }, [
         el("button", {
           class: "btn btnPrimary",
           type: "button",
           onClick: startTimerForStep,
           disabled: !(currentText && canStartStep(activeStep)) || running
-        }, ["Start Step"]),
+        }, ["Start"]),
         el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/move") }, ["Move Forward"]),
       ]),
       el("p", { class: "small", style: "margin-top:10px" }, [goalLine()])
@@ -379,13 +375,16 @@ export function renderTodayPlan() {
   function refineCard() {
     if (!showRefine) {
       return el("div", { class: "card cardPad" }, [
-        el("button", { class: "btn", type: "button", onClick: () => { showRefine = true; rerender(); } }, ["Need to refine? (optional)"])
+        el("p", { class: "small" }, ["Optional: if your step feels vague, use Clarify."]),
+        el("div", { class: "btnRow" }, [
+          el("button", { class: "btn", type: "button", onClick: () => { showRefine = true; rerender(); } }, ["Show options"])
+        ])
       ]);
     }
 
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["Refine (optional)"]),
-      el("p", { class: "small" }, ["If your steps are vague, use Clarify."]),
+      el("p", { class: "small" }, ["If your brain is bargaining: lock a move, then do it."]),
       el("div", { class: "btnRow" }, [
         el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/reflect") }, ["Clarify the Next Move"]),
         el("button", { class: "btn", type: "button", onClick: () => { showRefine = false; rerender(); } }, ["Hide"])
@@ -416,7 +415,8 @@ export function renderTodayPlan() {
     if (statusMode === "stopped_early") {
       return el("div", { class: "card cardPad" }, [
         el("div", { class: "badge" }, ["Stopped early"]),
-        el("p", { class: "p" }, [`You worked for ${stopElapsedSec}s. Change state, then try again.`]),
+        el("p", { class: "p" }, [`You did ${stopElapsedSec}s. That still counts.`]),
+        el("p", { class: "small" }, ["Change state, then try the step again."]),
         el("div", { class: "btnRow" }, [
           el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/yellow/calm") }, ["Calm Me Down"]),
           el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/yellow/stop") }, ["Stop the Urge"]),
@@ -430,8 +430,8 @@ export function renderTodayPlan() {
 
     if (statusMode === "time_complete") {
       return el("div", { class: "card cardPad" }, [
-        el("div", { class: "badge" }, ["Time complete"]),
-        el("p", { class: "p" }, ["Did you complete the step (or move it forward enough)?"]),
+        el("div", { class: "badge" }, ["Time’s up"]),
+        el("p", { class: "p" }, ["Did the step move forward enough?"]),
         el("div", { class: "btnRow" }, [
           el("button", {
             class: "btn btnPrimary",
@@ -443,7 +443,7 @@ export function renderTodayPlan() {
               statusMode = "logged";
               rerender();
             }
-          }, ["Done"]),
+          }, ["Yes"]),
           el("button", {
             class: "btn",
             type: "button",
@@ -452,7 +452,7 @@ export function renderTodayPlan() {
               statusMode = "offer_continue";
               rerender();
             }
-          }, ["Still stuck"]),
+          }, ["No"]),
         ]),
       ]);
     }
@@ -460,7 +460,7 @@ export function renderTodayPlan() {
     if (statusMode === "offer_continue") {
       return el("div", { class: "card cardPad" }, [
         el("div", { class: "badge" }, ["Still stuck"]),
-        el("p", { class: "p" }, ["Pick one: continue briefly, or change state."]),
+        el("p", { class: "p" }, ["Choose one: a short continue, or change state."]),
         el("div", { class: "btnRow" }, [
           el("button", { class: "btn btnPrimary", type: "button", onClick: () => continueAfterStuck(5) }, ["Continue 5 min"]),
           el("button", { class: "btn", type: "button", onClick: () => continueAfterStuck(10) }, ["Continue 10 min"]),
@@ -484,7 +484,7 @@ export function renderTodayPlan() {
         el("div", { class: "badge" }, ["Next move"]),
         el("p", { class: "p" }, [
           good
-            ? (activeStep < 3 ? `Go to Step ${nextStep}.` : "Plan complete. Reset or choose a new direction.")
+            ? (activeStep < 3 ? `Go to Step ${nextStep}.` : "Plan complete. Reset or pick a new direction.")
             : "Change state, then try again."
         ]),
         el("div", { class: "btnRow" }, [
@@ -504,7 +504,7 @@ export function renderTodayPlan() {
     if (!log.length) return null;
 
     return el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["Recent steps"]),
+      el("div", { class: "badge" }, ["Recent"]),
       ...log.map(e =>
         el("div", { style: "padding:10px 0;border-bottom:1px solid var(--line);" }, [
           el("div", { style: "font-weight:900;" }, [`Step ${e.step ?? "?"}`]),
@@ -519,16 +519,17 @@ export function renderTodayPlan() {
   function rerender() {
     wrap.innerHTML = "";
     wrap.appendChild(header());
-    wrap.appendChild(templatesCard());
-    wrap.appendChild(planCard());
-    wrap.appendChild(primaryActionCard());
-    wrap.appendChild(refineCard());
 
+    // Keep “do” above “edit” in the user’s mind:
+    wrap.appendChild(primaryActionCard());
     const t = timerCard();
     if (t) wrap.appendChild(t);
-
     const s = statusCard();
     if (s) wrap.appendChild(s);
+
+    wrap.appendChild(templatesCard());
+    wrap.appendChild(planCard());
+    wrap.appendChild(refineCard());
 
     const r = recentCard();
     if (r) wrap.appendChild(r);
