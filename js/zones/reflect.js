@@ -33,10 +33,10 @@ const CONTROL = [
 
 const MOVES = [
   { id: "pause24", label: "Do nothing for 24 hours", hint: "No messages. No checking. No analysis.", to: "#/home" },
-  { id: "calm", label: "Calm first (2 minutes)", hint: "Lower intensity, then decide.", to: "#/yellow/calm" },
-  { id: "shield", label: "Stop the Urge (shield)", hint: "Pause and add friction.", to: "#/yellow/stop" },
-  { id: "move", label: "Move Forward (body → progress)", hint: "Momentum creates clarity.", to: "#/green/move" },
-  { id: "direction", label: "Choose Today’s Direction", hint: "Pick a lane; stop drifting.", to: "#/green/direction" },
+  { id: "calm", label: "Calm first (2 minutes)", hint: "Reduce intensity, then decide.", to: "#/yellow/calm" },
+  { id: "shield", label: "Stop the Urge", hint: "Pause and add friction.", to: "#/yellow/stop" },
+  { id: "move", label: "Move Forward", hint: "Move first. Think later.", to: "#/green/move" },
+  { id: "direction", label: "Choose Today’s Direction", hint: "Pick a lane. Stop drifting.", to: "#/green/direction" },
 ];
 
 function lastClarify() {
@@ -63,7 +63,7 @@ export function renderReflect() {
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["Clarify the Next Move"]),
-        el("p", { class: "p" }, ["Not journaling. Tap quickly. Lock a move."]),
+        el("p", { class: "p" }, ["Three taps. Lock one move. Then do it."]),
       ]),
       el("div", { class: "flowMeta" }, [
         el("button", { class: "linkBtn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
@@ -131,7 +131,7 @@ export function renderReflect() {
       el("div", { class: "badge" }, ["Last locked move"]),
       el("p", { class: "p" }, [last.statement]),
       el("div", { class: "btnRow" }, [
-        el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = moveTo) }, ["Do that now"]),
+        el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = moveTo) }, ["Do it now"]),
         el("button", { class: "btn", type: "button", onClick: () => { state.step = 1; state.loop=null; state.control=null; state.move=null; state.statement=""; rerender(); } }, ["Run Clarify"]),
       ])
     ]);
@@ -144,7 +144,7 @@ export function renderReflect() {
       el("div", { class: "card cardPad" }, [
         badge("Step 1 of 3"),
         el("h2", { class: "h2" }, ["What’s looping?"]),
-        el("p", { class: "small" }, ["Pick the closest match."]),
+        el("p", { class: "small" }, ["Pick what fits best."]),
         el("div", { class: "flowShell", style: "margin-top:10px" }, STEP1.map(o =>
           tile(o, () => { state.loop = o.id; setStep(2); }, "dotGreen")
         )),
@@ -156,7 +156,7 @@ export function renderReflect() {
     return el("div", { class: "card cardPad" }, [
       badge("Step 2 of 3"),
       el("h2", { class: "h2" }, ["What’s in your control right now?"]),
-      el("p", { class: "small" }, ["This reduces rumination instantly."]),
+      el("p", { class: "small" }, ["This reduces rumination fast."]),
       el("div", { class: "flowShell", style: "margin-top:10px" }, CONTROL.map(o =>
         tile(o, () => { state.control = o.id; setStep(3); }, o.id === "nothing" ? "dotYellow" : "dotGreen")
       )),
@@ -170,7 +170,7 @@ export function renderReflect() {
     return el("div", { class: "card cardPad" }, [
       badge("Step 3 of 3"),
       el("h2", { class: "h2" }, ["Pick the smallest safe move"]),
-      el("p", { class: "small" }, ["Tap one. You’ll lock it in."]),
+      el("p", { class: "small" }, ["Tap one to lock it."]),
       el("div", { class: "flowShell", style: "margin-top:10px" }, MOVES.map(m =>
         tile(
           { label: m.label, hint: m.hint },
@@ -203,7 +203,7 @@ export function renderReflect() {
       el("div", { class: "btnRow" }, [
         el("button", { class: "btn", type: "button", onClick: () => { state.step = 1; state.loop=null; state.control=null; state.move=null; state.statement=""; rerender(); } }, ["Run Clarify again"]),
       ]),
-      el("p", { class: "small", style: "margin-top:8px" }, ["Rule: stop after you lock the move. No spiraling."]),
+      el("p", { class: "small", style: "margin-top:8px" }, ["Rule: once you lock a move, stop. Then do it."]),
     ]);
   }
 
