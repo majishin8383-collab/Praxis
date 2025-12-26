@@ -1,9 +1,8 @@
 import { appendLog, readLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "MF-1";
+const BUILD = "MF-2";
 
-// simple DOM helper (matches your pattern)
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -24,11 +23,6 @@ function safeAppendLog(entry) {
   try { appendLog(entry); } catch {}
 }
 
-/**
- * LADDERS
- * - Movement-first, zero ambiguity
- * - Each ladder has: title, what to do, timer default, and "steps" prompts
- */
 const LADDERS = [
   {
     id: "walk",
@@ -80,7 +74,7 @@ const LADDERS = [
     desc: "Small win to restart momentum.",
     minutes: 2,
     steps: [
-      "Pick ONE tiny task (email / text / dishes / timer).",
+      "Pick ONE tiny task (email / dishes / timer).",
       "Set 2 minutes. Start before thinking.",
       "When it ends: stop. You win either way."
     ]
@@ -101,7 +95,6 @@ const LADDERS = [
 export function renderMoveForward() {
   const wrap = el("div", { class: "flowShell" });
 
-  // --- state ---
   let running = false;
   let selectedLadderId = LADDERS[0].id;
 
@@ -167,7 +160,6 @@ export function renderMoveForward() {
       if (remaining <= 0) {
         stopTick();
         running = false;
-        currentMode = "done";
         rerender("done");
       } else {
         updateTimerUI();
@@ -221,7 +213,6 @@ export function renderMoveForward() {
   }
 
   function logOutcome(outcome) {
-    // outcome: "done" | "stuck"
     lastOutcome = outcome;
 
     const ladder = getSelected();
@@ -232,7 +223,7 @@ export function renderMoveForward() {
       ladderId: ladder.id,
       ladderTitle: ladder.title,
       minutes: durationMin,
-      outcome,
+      outcome, // done | stuck
       stoppedEarly,
       earlyStopReason,
       earlyStopElapsedSec,
@@ -268,33 +259,24 @@ export function renderMoveForward() {
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["Move Forward"]),
-        el("p", { class: "p" }, ["Body first. Then progress. Pick a ladder and move until the timer ends."]),
+        el("p", { class: "p" }, ["Tap a ladder. Start moving immediately."]),
         el("div", { class: "small" }, [`Build ${BUILD}`]),
       ]),
       el("div", { class: "flowMeta" }, [
-        el("button", {
-          class: "linkBtn",
-          type: "button",
-          onClick: () => {
-            running = false;
-            stopTick();
-            location.hash = "#/home";
-          }
-        }, ["Reset"]),
+        el("button", { class: "linkBtn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
       ])
     ]);
   }
 
-  function ladderPicker() {
+  function ladderPickerCard() {
     return el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["Pick one ladder"]),
-      el("p", { class: "p" }, ["No perfect choice. Pick the closest and start."]),
-      el("div", { class: "flowShell" }, LADDERS.map(l => {
-        const isSel = l.id === selectedLadderId;
-        return el("button", {
+      el("div", { class: "badge" }, ["Tap to start"]),
+      el("p", { class: "p" }, ["No perfect choice. Tap the closest. Praxis starts it."]),
+      el("div", { class: "flowShell" }, LADDERS.map(l =>
+        el("button", {
           class: "actionTile",
           type: "button",
-          onClick: () => { selectedLadderId = l.id; rerender("pick"); }
+          onClick: () => startLadder(l.id) // ✅ tap = start
         }, [
           el("div", { class: "tileTop" }, [
             el("div", {}, [
@@ -303,17 +285,16 @@ export function renderMoveForward() {
             ]),
             el("div", { class: `zoneDot dotGreen` }, []),
           ]),
-          isSel ? el("p", { class: "tileHint" }, ["Selected"]) : el("p", { class: "tileHint" }, ["Tap to select"]),
-        ]);
-      })),
+          el("p", { class: "tileHint" }, ["Tap to start"]),
+        ])
+      )),
       el("div", { class: "btnRow" }, [
-        el("button", { class: "btn btnPrimary", type: "button", onClick: () => startLadder(selectedLadderId) }, ["Start"]),
         el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/today") }, ["Today’s Plan"]),
       ])
     ]);
   }
 
-  function ladderInstructions() {
+  function ladderInstructionsCard() {
     const ladder = getSelected();
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["Do this now"]),
@@ -324,30 +305,35 @@ export function renderMoveForward() {
           el("div", { style: "font-weight:900;" }, [s]),
         ])
       )),
-      el("p", { class: "small", style: "margin-top:10px" }, ["Start moving before thinking."]),
+      el("div", { class: "btnRow", style: "margin-top:10px" }, [
+        el("button", { class: "btn", type: "button", onClick: () => rerender("pick") }, ["Change ladder"]),
+      ])
     ]);
   }
 
-  function timerPanel() {
+  function timerCard() {
     if (!running) {
       return el("div", { class: "card cardPad" }, [
         el("div", { class: "badge" }, ["Timer"]),
-        el("p", { class: "p" }, ["Pick a ladder, then press Start."]),
+        el("p", { class: "p" }, ["Tap a ladder to begin."]),
       ]);
     }
 
     const remaining = clamp(endAt - Date.now(), 0, durationMin * 60 * 1000);
-    return el("div", { class: "timerBox" }, [
-      el("div", { class: "badge" }, [`Active • ${durationMin} min window`]),
-      el("div", { class: "timerReadout", "data-timer-readout": "1" }, [formatMMSS(remaining)]),
-      el("div", { class: "progressBar" }, [
-        el("div", { class: "progressFill", "data-progress-fill": "1" }, []),
-      ]),
-      el("div", { class: "btnRow" }, [
-        el("button", { class: "btn", type: "button", onClick: () => extend(3) }, ["+3 min"]),
-        el("button", { class: "btn", type: "button", onClick: () => extend(5) }, ["+5 min"]),
-        el("button", { class: "btn", type: "button", onClick: () => stopEarly() }, ["Stop"]),
-      ]),
+    return el("div", { class: "card cardPad" }, [
+      el("h2", { class: "h2" }, ["Timer"]),
+      el("div", { class: "timerBox" }, [
+        el("div", { class: "badge" }, [`Active • ${durationMin} min window`]),
+        el("div", { class: "timerReadout", "data-timer-readout": "1" }, [formatMMSS(remaining)]),
+        el("div", { class: "progressBar" }, [
+          el("div", { class: "progressFill", "data-progress-fill": "1" }, []),
+        ]),
+        el("div", { class: "btnRow" }, [
+          el("button", { class: "btn", type: "button", onClick: () => extend(3) }, ["+3 min"]),
+          el("button", { class: "btn", type: "button", onClick: () => extend(5) }, ["+5 min"]),
+          el("button", { class: "btn", type: "button", onClick: () => stopEarly() }, ["Stop"]),
+        ]),
+      ])
     ]);
   }
 
@@ -360,24 +346,14 @@ export function renderMoveForward() {
           el("button", {
             class: "btn btnPrimary",
             type: "button",
-            onClick: () => {
-              earlyStopReason = "safe";
-              // go to check-out (but still not a full "completion")
-              rerender("done");
-            }
+            onClick: () => { earlyStopReason = "safe"; rerender("done"); }
           }, ["I’m okay / situation changed"]),
           el("button", {
             class: "btn",
             type: "button",
-            onClick: () => {
-              earlyStopReason = "bailed";
-              // treat as "stuck" path immediately
-              logOutcome("stuck");
-              rerender("logged");
-            }
+            onClick: () => { earlyStopReason = "bailed"; logOutcome("stuck"); rerender("logged"); }
           }, ["Still stuck / resisting it"]),
         ]),
-        el("p", { class: "small", style: "margin-top:10px" }, ["Honesty keeps Praxis accurate."]),
       ]);
     }
 
@@ -386,19 +362,8 @@ export function renderMoveForward() {
         el("div", { class: "badge" }, ["Check-out"]),
         el("p", { class: "p" }, ["What’s true right now?"]),
         el("div", { class: "btnRow" }, [
-          el("button", {
-            class: "btn btnPrimary",
-            type: "button",
-            onClick: () => { logOutcome("done"); rerender("logged"); }
-          }, ["I did it"]),
-          el("button", {
-            class: "btn",
-            type: "button",
-            onClick: () => { logOutcome("stuck"); rerender("logged"); }
-          }, ["Still stuck"]),
-        ]),
-        el("p", { class: "small", style: "margin-top:10px" }, [
-          "No shame either way. We just pick the next right move."
+          el("button", { class: "btn btnPrimary", type: "button", onClick: () => { logOutcome("done"); rerender("logged"); } }, ["I did it"]),
+          el("button", { class: "btn", type: "button", onClick: () => { logOutcome("stuck"); rerender("logged"); } }, ["Still stuck"]),
         ]),
       ]);
     }
@@ -407,14 +372,11 @@ export function renderMoveForward() {
       const done = lastOutcome === "done";
       const stuck = lastOutcome === "stuck";
 
-      // Next-step routing rules:
-      // - done -> Today Plan / Find Next Step / Clarify
-      // - stuck -> Calm / Stop the Urge / Emergency
       return el("div", { class: "card cardPad" }, [
         el("div", { class: "badge" }, ["Next move"]),
         el("p", { class: "p" }, [
           done
-            ? "Good. Momentum is here. Turn it into a simple plan."
+            ? "Good. Turn momentum into a simple plan."
             : earlyStopReason === "bailed"
             ? "Okay. Don’t force it. Change state, then choose again."
             : "Okay. Change state, then choose again."
@@ -439,7 +401,6 @@ export function renderMoveForward() {
       ]);
     }
 
-    // pick/running default status
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["Rule"]),
       el("p", { class: "p" }, ["Move first. Thinking comes later."]),
@@ -452,29 +413,20 @@ export function renderMoveForward() {
     wrap.appendChild(header());
 
     if (mode === "pick") {
-      wrap.appendChild(ladderPicker());
+      wrap.appendChild(ladderPickerCard());
       wrap.appendChild(el("div", { class: "card cardPad" }, [recentLogs()]));
       return wrap;
     }
 
-    const ladderCard = ladderInstructions();
-    const timerCard = el("div", { class: "card cardPad" }, [
-      el("h2", { class: "h2" }, ["Timer"]),
-      timerPanel(),
-    ]);
-    const status = statusCard(mode);
-    const logCard = el("div", { class: "card cardPad" }, [recentLogs()]);
-
-    wrap.appendChild(ladderCard);
-    wrap.appendChild(timerCard);
-    wrap.appendChild(status);
-    wrap.appendChild(logCard);
+    wrap.appendChild(ladderInstructionsCard());
+    wrap.appendChild(timerCard());
+    wrap.appendChild(statusCard(mode));
+    wrap.appendChild(el("div", { class: "card cardPad" }, [recentLogs()]));
 
     if (running) updateTimerUI();
     return wrap;
   }
 
-  // default view
   rerender("pick");
   return wrap;
 }
