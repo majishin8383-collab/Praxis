@@ -1,7 +1,7 @@
 import { appendLog, readLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "TP-7";
+const BUILD = "TP-8";
 const KEY = "praxis_today_plan_v5"; // keep same key so users don't lose saved plan
 
 function el(tag, attrs = {}, children = []) {
@@ -60,7 +60,13 @@ export function renderTodayPlan() {
   let running = false;
   let timerMode = "step"; // "step" | "plan"
   let activeStep = 1;     // 1..3
-  let durationMin = 10;
+
+  // ✅ split durations so Step never gets overwritten
+  let stepDurationMin = 10;
+  let refineDurationMin = 5;
+
+  // live timer values
+  let liveDurationMin = 10; // the duration used for the currently running timer
   let startAt = 0;
   let endAt = 0;
   let tick = null;
@@ -70,7 +76,7 @@ export function renderTodayPlan() {
   let statusMode = "idle"; // idle | running | checkout | logged | early_stop
   let stoppedEarly = false;
   let earlyStopElapsedSec = 0;
-  let earlyStopReason = null; // safe | bailed | null
+  let earlyStopReason = null;
   let lastOutcome = null; // done | stuck | set | unclear | null
 
   safeAppendLog({ kind: "today_plan_open", when: nowISO(), build: BUILD });
@@ -106,8 +112,8 @@ export function renderTodayPlan() {
   }
 
   function updateTimerUI() {
-    const remaining = clamp(endAt - Date.now(), 0, durationMin * 60 * 1000);
-    const pct = 100 * (1 - remaining / (durationMin * 60 * 1000));
+    const remaining = clamp(endAt - Date.now(), 0, liveDurationMin * 60 * 1000);
+    const pct = 100 * (1 - remaining / (liveDurationMin * 60 * 1000));
     const readout = wrap.querySelector("[data-timer-readout]");
     const fill = wrap.querySelector("[data-progress-fill]");
     if (readout) readout.textContent = formatMMSS(remaining);
@@ -123,6 +129,9 @@ export function renderTodayPlan() {
       const t = stepText(activeStep);
       if (!t) return;
       if (!canStartStep(activeStep)) return;
+      liveDurationMin = stepDurationMin;   // ✅ always use step duration
+    } else {
+      liveDurationMin = refineDurationMin; // ✅ always use refine duration
     }
 
     running = true;
@@ -134,13 +143,13 @@ export function renderTodayPlan() {
     lastOutcome = null;
 
     startAt = Date.now();
-    endAt = Date.now() + durationMin * 60 * 1000;
+    endAt = Date.now() + liveDurationMin * 60 * 1000;
 
     safeAppendLog({
       kind: mode === "plan" ? "today_plan_plan_start" : "today_plan_step_start",
       when: nowISO(),
       template: state.template || "custom",
-      minutes: durationMin,
+      minutes: liveDurationMin,
       step: mode === "step" ? activeStep : null,
       stepText: mode === "step" ? stepText(activeStep) : null,
       build: BUILD
@@ -166,8 +175,8 @@ export function renderTodayPlan() {
 
   function stopEarly() {
     const now = Date.now();
-    const elapsedMs = startAt ? clamp(now - startAt, 0, durationMin * 60 * 1000) : 0;
-    const remainingMs = clamp(endAt - now, 0, durationMin * 60 * 1000);
+    const elapsedMs = startAt ? clamp(now - startAt, 0, liveDurationMin * 60 * 1000) : 0;
+    const remainingMs = clamp(endAt - now, 0, liveDurationMin * 60 * 1000);
 
     stopTick();
     running = false;
@@ -180,7 +189,7 @@ export function renderTodayPlan() {
       kind: timerMode === "plan" ? "today_plan_plan_stop" : "today_plan_step_stop",
       when: nowISO(),
       template: state.template || "custom",
-      minutesPlanned: durationMin,
+      minutesPlanned: liveDurationMin,
       elapsedSec: Math.round(elapsedMs / 1000),
       remainingSec: Math.round(remainingMs / 1000),
       step: timerMode === "step" ? activeStep : null,
@@ -225,7 +234,7 @@ export function renderTodayPlan() {
       template: state.template || "custom",
       step: activeStep,
       stepText: stepText(activeStep),
-      minutes: durationMin,
+      minutes: liveDurationMin,
       result,
       stoppedEarly,
       earlyStopReason,
@@ -322,9 +331,10 @@ export function renderTodayPlan() {
         currentText ? currentText : "Add text to this step above."
       ]),
       el("div", { class: "btnRow" }, [
-        el("button", { class: "btn", type: "button", onClick: () => { durationMin = 5; rerender(); } }, ["5 min"]),
-        el("button", { class: "btn", type: "button", onClick: () => { durationMin = 10; rerender(); } }, ["10 min"]),
-        el("button", { class: "btn", type: "button", onClick: () => { durationMin = 25; rerender(); } }, ["25 min"]),
+        el("button", { class: "btn", type: "button", onClick: () => { stepDurationMin = 2; rerender(); } }, ["2 min"]),
+        el("button", { class: "btn", type: "button", onClick: () => { stepDurationMin = 5; rerender(); } }, ["5 min"]),
+        el("button", { class: "btn", type: "button", onClick: () => { stepDurationMin = 10; rerender(); } }, ["10 min"]),
+        el("button", { class: "btn", type: "button", onClick: () => { stepDurationMin = 25; rerender(); } }, ["25 min"]),
       ]),
       el("div", { class: "btnRow" }, [
         el("button", {
@@ -332,7 +342,7 @@ export function renderTodayPlan() {
           type: "button",
           onClick: () => startTimer("step"),
           disabled: !(currentText && canStartStep(activeStep))
-        }, ["Start Step"]),
+        }, [`Start Step (${stepDurationMin}m)`]),
         el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/move") }, ["Move Forward"]),
       ]),
       el("p", { class: "small", style: "margin-top:10px" }, [goalLine()])
@@ -353,17 +363,18 @@ export function renderTodayPlan() {
       el("div", { class: "badge" }, ["Refine (optional)"]),
       el("p", { class: "small" }, ["Short sprint to tighten the 3 steps. Then start Step 1."]),
       el("div", { class: "btnRow" }, [
-        el("button", { class: "btn", type: "button", onClick: () => { durationMin = 3; rerender(); } }, ["3 min"]),
-        el("button", { class: "btn", type: "button", onClick: () => { durationMin = 5; rerender(); } }, ["5 min"]),
-        el("button", { class: "btn", type: "button", onClick: () => { durationMin = 10; rerender(); } }, ["10 min"]),
+        el("button", { class: "btn", type: "button", onClick: () => { refineDurationMin = 2; rerender(); } }, ["2 min"]),
+        el("button", { class: "btn", type: "button", onClick: () => { refineDurationMin = 3; rerender(); } }, ["3 min"]),
+        el("button", { class: "btn", type: "button", onClick: () => { refineDurationMin = 5; rerender(); } }, ["5 min"]),
+        el("button", { class: "btn", type: "button", onClick: () => { refineDurationMin = 10; rerender(); } }, ["10 min"]),
       ]),
       el("div", { class: "btnRow" }, [
         el("button", {
           class: "btn",
           type: "button",
-          onClick: () => { timerMode = "plan"; startTimer("plan"); },
+          onClick: () => startTimer("plan"),
           disabled: !any
-        }, ["Start refine sprint"]),
+        }, [`Start refine (${refineDurationMin}m)`]),
         el("button", { class: "btn", type: "button", onClick: () => { showRefine = false; rerender(); } }, ["Hide"])
       ])
     ]);
@@ -372,11 +383,11 @@ export function renderTodayPlan() {
   function timerCard() {
     if (!running) return null;
 
-    const remaining = clamp(endAt - Date.now(), 0, durationMin * 60 * 1000);
+    const remaining = clamp(endAt - Date.now(), 0, liveDurationMin * 60 * 1000);
     const title = timerMode === "plan" ? "Refine Sprint" : `Step ${activeStep} Sprint`;
 
     return el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, [`${title} • ${durationMin} min`]),
+      el("div", { class: "badge" }, [`${title} • ${liveDurationMin} min`]),
       el("div", { class: "timerBox" }, [
         el("div", { class: "timerReadout", "data-timer-readout": "1" }, [formatMMSS(remaining)]),
         el("div", { class: "progressBar" }, [
@@ -501,7 +512,6 @@ export function renderTodayPlan() {
   function rerender() {
     wrap.innerHTML = "";
     wrap.appendChild(header());
-
     wrap.appendChild(templatesCard());
     wrap.appendChild(planCard());
     wrap.appendChild(primaryActionCard());
