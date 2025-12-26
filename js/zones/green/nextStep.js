@@ -15,37 +15,37 @@ function el(tag, attrs = {}, children = []) {
 const OPTIONS = [
   {
     label: "Overwhelmed / anxious",
-    hint: "Lower intensity first.",
+    hint: "Reduce intensity first.",
     go: "#/yellow/calm",
     goLabel: "Calm Me Down"
   },
   {
     label: "Urge to act / message / react",
-    hint: "Pause before acting.",
+    hint: "Pause before you do anything.",
     go: "#/yellow/stop",
     goLabel: "Stop the Urge"
   },
   {
     label: "Stuck / frozen",
-    hint: "Body first. Then progress.",
+    hint: "Move your body first.",
     go: "#/green/move",
     goLabel: "Move Forward"
   },
   {
     label: "Restless / distracted",
-    hint: "Discharge energy fast.",
+    hint: "Move to discharge energy.",
     go: "#/green/move",
     goLabel: "Move Forward"
   },
   {
     label: "I’m okay — I need direction",
-    hint: "Pick a lane for today.",
+    hint: "Pick one lane for today.",
     go: "#/green/direction",
     goLabel: "Choose Today’s Direction"
   },
   {
     label: "I don’t know",
-    hint: "Action creates clarity.",
+    hint: "Start moving. Clarity follows.",
     go: "#/green/move",
     goLabel: "Move Forward"
   }
@@ -58,7 +58,7 @@ export function renderNextStep() {
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["Find Your Next Step"]),
-        el("p", { class: "p" }, ["Tap what’s closest. Praxis sends you to the next move."]),
+        el("p", { class: "p" }, ["Tap what’s closest. Praxis takes you there."]),
       ]),
       // Reset button hidden by CSS; safe to keep
       el("div", { class: "flowMeta" }, [
@@ -87,15 +87,15 @@ export function renderNextStep() {
   wrap.appendChild(header());
 
   wrap.appendChild(el("div", { class: "card cardPad" }, [
-    el("div", { class: "badge" }, ["No thinking. One tap."]),
-    el("p", { class: "small" }, ["Whatever you tap becomes the next screen."]),
+    el("div", { class: "badge" }, ["One tap."]),
+    el("p", { class: "small" }, ["Don’t decide. Just choose what fits right now."]),
   ]));
 
   wrap.appendChild(el("div", { class: "flowShell" }, OPTIONS.map(tile)));
 
   // Optional: emergency link always visible but not noisy
   wrap.appendChild(el("div", { class: "card cardPad" }, [
-    el("p", { class: "small" }, ["If you’re at risk of harm:"]),
+    el("p", { class: "small" }, ["If safety is at risk:"]),
     el("div", { class: "btnRow" }, [
       el("button", { class: "btn btnDanger", type: "button", onClick: () => (location.hash = "#/red/emergency") }, ["Emergency"]),
     ])
