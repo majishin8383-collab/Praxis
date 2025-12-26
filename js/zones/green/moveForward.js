@@ -1,7 +1,7 @@
 import { appendLog, readLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "MF-2";
+const BUILD = "MF-3";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -18,10 +18,7 @@ function el(tag, attrs = {}, children = []) {
 }
 
 const nowISO = () => new Date().toISOString();
-
-function safeAppendLog(entry) {
-  try { appendLog(entry); } catch {}
-}
+function safeAppendLog(entry) { try { appendLog(entry); } catch {} }
 
 const LADDERS = [
   {
@@ -29,85 +26,70 @@ const LADDERS = [
     title: "Walk + breathe",
     desc: "Move your body. Let the mind settle behind you.",
     minutes: 5,
-    steps: [
-      "Stand up. Shoulders down.",
-      "Walk anywhere (inside is fine).",
-      "In 4 → out 6. Keep moving."
-    ]
+    steps: ["Stand up. Shoulders down.", "Walk anywhere (inside is fine).", "In 4 → out 6. Keep moving."]
   },
   {
     id: "reset_body",
     title: "Body reset",
     desc: "Short circuit the loop with simple reps.",
     minutes: 5,
-    steps: [
-      "20 slow squats (or chair sits).",
-      "20 wall push-ups (or countertop).",
-      "60s stretch: neck + chest + hips."
-    ]
+    steps: ["20 slow squats (or chair sits).", "20 wall push-ups (or countertop).", "60s stretch: neck + chest + hips."]
   },
   {
     id: "water_light",
     title: "Water + light",
     desc: "Basic physiology first: hydrate, brighten, regulate.",
     minutes: 3,
-    steps: [
-      "Drink a full glass of water.",
-      "Step into brighter light / outside if possible.",
-      "3 slow exhales. Keep eyes soft."
-    ]
+    steps: ["Drink a full glass of water.", "Step into brighter light / outside if possible.", "3 slow exhales. Keep eyes soft."]
   },
   {
     id: "clean_3",
     title: "Clean 3 things",
     desc: "Quick environmental control = quick mental control.",
     minutes: 5,
-    steps: [
-      "Grab a trash bag or laundry basket.",
-      "Pick up 3 things and put them away.",
-      "Wipe one surface for 60 seconds."
-    ]
+    steps: ["Grab a trash bag or laundry basket.", "Pick up 3 things and put them away.", "Wipe one surface for 60 seconds."]
   },
   {
     id: "micro_task",
     title: "Micro-task (2 minutes)",
     desc: "Small win to restart momentum.",
     minutes: 2,
-    steps: [
-      "Pick ONE tiny task (email / dishes / timer).",
-      "Set 2 minutes. Start before thinking.",
-      "When it ends: stop. You win either way."
-    ]
+    steps: ["Pick ONE tiny task (email / dishes / timer).", "Set 2 minutes. Start before thinking.", "When it ends: stop. You win either way."]
   },
   {
     id: "outside_reset",
     title: "Outside reset",
     desc: "Change the scene to change the state.",
     minutes: 7,
-    steps: [
-      "Put on shoes (no debate).",
-      "Walk to the end of the street / around building.",
-      "Look far away for 10 seconds. Breathe out longer."
-    ]
+    steps: ["Put on shoes (no debate).", "Walk to the end of the street / around building.", "Look far away for 10 seconds. Breathe out longer."]
   }
 ];
 
 export function renderMoveForward() {
   const wrap = el("div", { class: "flowShell" });
 
-  let running = false;
+  // Modes:
+  // pick -> choose ladder (tap selects)
+  // ready -> ladder selected; timer visible with Start button
+  // running -> timer running
+  // early_stop -> stopped early fork
+  // done -> timer ended checkout
+  // logged -> next move routing
+  let mode = "pick";
+
   let selectedLadderId = LADDERS[0].id;
 
+  let running = false;
   let durationMin = 5;
   let startAt = 0;
   let endAt = 0;
   let tick = null;
 
-  let currentMode = "pick"; // pick | running | early_stop | done | logged
+  // early stop + checkout state
   let stoppedEarly = false;
   let earlyStopElapsedSec = 0;
-  let earlyStopReason = null; // safe | bailed | null
-  let lastOutcome = null; // done | stuck | null
+  let earlyStopReason = null; // "safe" | "bailed" | null
+  let lastOutcome = null; // "done" | "stuck" | null
 
   safeAppendLog({ kind: "move_forward_open", when: nowISO(), build: BUILD });
 
@@ -129,12 +111,18 @@ export function renderMoveForward() {
     if (fill) fill.style.width = `${pct.toFixed(1)}%`;
   }
 
-  function startLadder(ladderId) {
-    const ladder = LADDERS.find(x => x.id === ladderId) || LADDERS[0];
+  function selectLadder(id) {
+    selectedLadderId = id;
+    const ladder = getSelected();
+    durationMin = ladder.minutes;
+    mode = "ready";
+    rerender(mode);
+  }
 
-    selectedLadderId = ladder.id;
+  function startSelected() {
+    const ladder = getSelected();
+
     running = true;
-
     stoppedEarly = false;
     earlyStopElapsedSec = 0;
     earlyStopReason = null;
@@ -160,13 +148,15 @@ export function renderMoveForward() {
       if (remaining <= 0) {
         stopTick();
         running = false;
-        rerender("done");
+        mode = "done";
+        rerender(mode);
       } else {
         updateTimerUI();
       }
     }, 250);
 
-    rerender("running");
+    mode = "running";
+    rerender(mode);
   }
 
   function extend(extraMin) {
@@ -209,7 +199,8 @@ export function renderMoveForward() {
       build: BUILD
     });
 
-    rerender("early_stop");
+    mode = "early_stop";
+    rerender(mode);
   }
 
   function logOutcome(outcome) {
@@ -223,7 +214,7 @@ export function renderMoveForward() {
       ladderId: ladder.id,
       ladderTitle: ladder.title,
       minutes: durationMin,
-      outcome, // done | stuck
+      outcome, // "done" | "stuck"
       stoppedEarly,
       earlyStopReason,
       earlyStopElapsedSec,
@@ -259,7 +250,7 @@ export function renderMoveForward() {
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["Move Forward"]),
-        el("p", { class: "p" }, ["Tap a ladder. Start moving immediately."]),
+        el("p", { class: "p" }, ["Tap a ladder → then press Start. Move first. Thinking comes later."]),
         el("div", { class: "small" }, [`Build ${BUILD}`]),
       ]),
       el("div", { class: "flowMeta" }, [
@@ -270,13 +261,13 @@ export function renderMoveForward() {
 
   function ladderPickerCard() {
     return el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["Tap to start"]),
-      el("p", { class: "p" }, ["No perfect choice. Tap the closest. Praxis starts it."]),
+      el("div", { class: "badge" }, ["Pick a ladder"]),
+      el("p", { class: "p" }, ["Tap one. Then hit Start."]),
       el("div", { class: "flowShell" }, LADDERS.map(l =>
         el("button", {
           class: "actionTile",
           type: "button",
-          onClick: () => startLadder(l.id) // ✅ tap = start
+          onClick: () => selectLadder(l.id)
         }, [
           el("div", { class: "tileTop" }, [
             el("div", {}, [
@@ -285,7 +276,7 @@ export function renderMoveForward() {
             ]),
             el("div", { class: `zoneDot dotGreen` }, []),
           ]),
-          el("p", { class: "tileHint" }, ["Tap to start"]),
+          el("p", { class: "tileHint" }, ["Tap to select"]),
         ])
       )),
       el("div", { class: "btnRow" }, [
@@ -306,16 +297,24 @@ export function renderMoveForward() {
         ])
       )),
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
-        el("button", { class: "btn", type: "button", onClick: () => rerender("pick") }, ["Change ladder"]),
+        el("button", { class: "btn", type: "button", onClick: () => { mode = "pick"; rerender(mode); } }, ["Change ladder"]),
       ])
     ]);
   }
 
   function timerCard() {
+    const ladder = getSelected();
+
     if (!running) {
+      // Calm-style: show start button once selected
       return el("div", { class: "card cardPad" }, [
-        el("div", { class: "badge" }, ["Timer"]),
-        el("p", { class: "p" }, ["Tap a ladder to begin."]),
+        el("h2", { class: "h2" }, ["Timer"]),
+        el("div", { class: "badge" }, [`${ladder.minutes} min`]),
+        el("p", { class: "p" }, ["Start the timer, then follow the steps above until it ends."]),
+        el("div", { class: "btnRow" }, [
+          el("button", { class: "btn btnPrimary", type: "button", onClick: () => startSelected() }, ["Start"]),
+          el("button", { class: "btn", type: "button", onClick: () => { mode = "pick"; rerender(mode); } }, ["Pick a different ladder"]),
+        ]),
       ]);
     }
 
@@ -337,8 +336,8 @@ export function renderMoveForward() {
     ]);
   }
 
-  function statusCard(mode) {
-    if (mode === "early_stop") {
+  function statusCard(modeNow) {
+    if (modeNow === "early_stop") {
       return el("div", { class: "card cardPad" }, [
         el("div", { class: "badge" }, ["Stopped early"]),
         el("p", { class: "p" }, [`You moved for ${earlyStopElapsedSec}s. Why are you stopping?`]),
@@ -346,31 +345,30 @@ export function renderMoveForward() {
           el("button", {
             class: "btn btnPrimary",
             type: "button",
-            onClick: () => { earlyStopReason = "safe"; rerender("done"); }
+            onClick: () => { earlyStopReason = "safe"; mode = "done"; rerender(mode); }
           }, ["I’m okay / situation changed"]),
           el("button", {
             class: "btn",
             type: "button",
-            onClick: () => { earlyStopReason = "bailed"; logOutcome("stuck"); rerender("logged"); }
+            onClick: () => { earlyStopReason = "bailed"; logOutcome("stuck"); mode = "logged"; rerender(mode); }
           }, ["Still stuck / resisting it"]),
         ]),
       ]);
     }
 
-    if (mode === "done") {
+    if (modeNow === "done") {
       return el("div", { class: "card cardPad" }, [
         el("div", { class: "badge" }, ["Check-out"]),
         el("p", { class: "p" }, ["What’s true right now?"]),
         el("div", { class: "btnRow" }, [
-          el("button", { class: "btn btnPrimary", type: "button", onClick: () => { logOutcome("done"); rerender("logged"); } }, ["I did it"]),
-          el("button", { class: "btn", type: "button", onClick: () => { logOutcome("stuck"); rerender("logged"); } }, ["Still stuck"]),
+          el("button", { class: "btn btnPrimary", type: "button", onClick: () => { logOutcome("done"); mode = "logged"; rerender(mode); } }, ["I did it"]),
+          el("button", { class: "btn", type: "button", onClick: () => { logOutcome("stuck"); mode = "logged"; rerender(mode); } }, ["Still stuck"]),
         ]),
       ]);
     }
 
-    if (mode === "logged") {
+    if (modeNow === "logged") {
       const done = lastOutcome === "done";
-      const stuck = lastOutcome === "stuck";
 
       return el("div", { class: "card cardPad" }, [
         el("div", { class: "badge" }, ["Next move"]),
@@ -395,38 +393,40 @@ export function renderMoveForward() {
             : el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/red/emergency") }, ["Emergency"]),
         ]),
         el("div", { class: "btnRow" }, [
-          el("button", { class: "btn", type: "button", onClick: () => rerender("pick") }, ["Run Move Forward again"]),
+          el("button", { class: "btn", type: "button", onClick: () => { mode = "pick"; rerender(mode); } }, ["Run Move Forward again"]),
           el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Back to Reset"]),
         ]),
       ]);
     }
 
+    // pick / ready / running helper status
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["Rule"]),
       el("p", { class: "p" }, ["Move first. Thinking comes later."]),
     ]);
   }
 
-  function rerender(mode) {
-    currentMode = mode;
+  function rerender(nextMode) {
+    mode = nextMode;
     wrap.innerHTML = "";
     wrap.appendChild(header());
 
     if (mode === "pick") {
       wrap.appendChild(ladderPickerCard());
       wrap.appendChild(el("div", { class: "card cardPad" }, [recentLogs()]));
-      return wrap;
+      return;
     }
 
+    // ready / running / early_stop / done / logged
     wrap.appendChild(ladderInstructionsCard());
     wrap.appendChild(timerCard());
     wrap.appendChild(statusCard(mode));
     wrap.appendChild(el("div", { class: "card cardPad" }, [recentLogs()]));
 
     if (running) updateTimerUI();
-    return wrap;
   }
 
+  // default
   rerender("pick");
   return wrap;
 }
