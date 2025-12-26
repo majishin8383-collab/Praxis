@@ -1,8 +1,8 @@
 import { appendLog, readLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "TP-3";
-const KEY = "praxis_today_plan_v3";
+const BUILD = "TP-4";
+const KEY = "praxis_today_plan_v4";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -19,10 +19,7 @@ function el(tag, attrs = {}, children = []) {
 }
 
 const nowISO = () => new Date().toISOString();
-
-function safeAppendLog(entry) {
-  try { appendLog(entry); } catch {}
-}
+function safeAppendLog(entry) { try { appendLog(entry); } catch {} }
 
 function readPlan() {
   try {
@@ -34,10 +31,7 @@ function readPlan() {
     return { a: "", b: "", c: "", template: "" };
   }
 }
-
-function savePlan(p) {
-  try { localStorage.setItem(KEY, JSON.stringify(p)); } catch {}
-}
+function savePlan(p) { try { localStorage.setItem(KEY, JSON.stringify(p)); } catch {} }
 
 const TEMPLATES = [
   { id: "stability", label: "Stability", a: "2-min Calm", b: "5-min walk / movement", c: "One small maintenance task" },
@@ -49,41 +43,53 @@ const TEMPLATES = [
 export function renderTodayPlan() {
   const wrap = el("div", { class: "flowShell" });
 
-  // modes:
-  // edit -> template/editor + timer start
-  // running -> timer running
-  // early_stop -> stopped early fork
-  // checkout -> plan set vs still unclear
-  // routed -> after logging outcome, show next buttons
+  // view modes
+  // edit: templates + editor + start buttons
+  // running_plan: planning sprint timer running
+  // running_step: execution sprint timer running (Step 1/2/3)
+  // early_stop: stopped early fork
+  // checkout: end-of-sprint outcome (set / unclear or step done / still stuck)
+  // routed: next move buttons
   let mode = "edit";
 
   let plan = readPlan();
 
-  // timer state (Calm-style: appears with Start)
+  // timer state
   let running = false;
-  let durationMin = 5; // planning sprint
+  let timerKind = "plan"; // "plan" | "step"
+  let durationMin = 5;
   let startAt = 0;
   let endAt = 0;
   let tick = null;
 
-  // early stop + outcome
+  // step sprint state
+  let activeStep = 1; // 1..3
+  let stepMinutes = 10; // default execution sprint length per step
+  let lastStepResult = null; // "done" | "stuck" | null
+
+  // early stop state
   let stoppedEarly = false;
   let earlyStopElapsedSec = 0;
   let earlyStopReason = null; // "safe" | "bailed" | null
-  let lastOutcome = null; // "set" | "unclear" | null
+
+  // plan outcome (at end of plan sprint)
+  let planOutcome = null; // "set" | "unclear" | null
 
   safeAppendLog({ kind: "today_plan_open", when: nowISO(), build: BUILD });
 
-  function stopTick() {
-    if (tick) clearInterval(tick);
-    tick = null;
-  }
+  function stopTick() { if (tick) clearInterval(tick); tick = null; }
 
-  function canStart() {
+  function nonEmptySteps() {
     const a = (plan.a || "").trim();
     const b = (plan.b || "").trim();
     const c = (plan.c || "").trim();
-    return a.length > 0 || b.length > 0 || c.length > 0;
+    return { a, b, c, any: !!(a || b || c) };
+  }
+
+  function getStepText(n) {
+    if (n === 1) return (plan.a || "").trim();
+    if (n === 2) return (plan.b || "").trim();
+    return (plan.c || "").trim();
   }
 
   function updateTimerUI() {
@@ -95,23 +101,27 @@ export function renderTodayPlan() {
     if (fill) fill.style.width = `${pct.toFixed(1)}%`;
   }
 
-  function startTimer() {
-    if (!canStart()) return;
+  function startTimer(kind) {
+    const s = nonEmptySteps();
+    if (!s.any) return;
 
     running = true;
+    timerKind = kind;
+
     stoppedEarly = false;
     earlyStopElapsedSec = 0;
     earlyStopReason = null;
-    lastOutcome = null;
 
     startAt = Date.now();
     endAt = Date.now() + durationMin * 60 * 1000;
 
     safeAppendLog({
-      kind: "today_plan_start",
+      kind: kind === "plan" ? "today_plan_sprint_start" : "today_plan_step_start",
       when: nowISO(),
       minutes: durationMin,
       template: plan.template || "custom",
+      step: kind === "step" ? activeStep : null,
+      stepText: kind === "step" ? getStepText(activeStep) : null,
       build: BUILD
     });
 
@@ -129,7 +139,7 @@ export function renderTodayPlan() {
       }
     }, 250);
 
-    mode = "running";
+    mode = kind === "plan" ? "running_plan" : "running_step";
     rerender(mode);
   }
 
@@ -146,12 +156,13 @@ export function renderTodayPlan() {
     earlyStopReason = null;
 
     safeAppendLog({
-      kind: "today_plan_stop",
+      kind: timerKind === "plan" ? "today_plan_sprint_stop" : "today_plan_step_stop",
       when: nowISO(),
       minutesPlanned: durationMin,
       elapsedSec: Math.round(elapsedMs / 1000),
       remainingSec: Math.round(remainingMs / 1000),
       template: plan.template || "custom",
+      step: timerKind === "step" ? activeStep : null,
       build: BUILD
     });
 
@@ -173,15 +184,14 @@ export function renderTodayPlan() {
     rerender(mode);
   }
 
-  function logOutcome(outcome) {
-    lastOutcome = outcome; // "set" | "unclear"
-
+  function logPlanSave(outcome) {
+    planOutcome = outcome; // "set" | "unclear"
     safeAppendLog({
       kind: "today_plan",
       when: nowISO(),
       template: plan.template || "custom",
       steps: { a: plan.a, b: plan.b, c: plan.c },
-      minutes: durationMin,
+      planningMinutes: timerKind === "plan" ? durationMin : null,
       outcome,
       stoppedEarly,
       earlyStopReason,
@@ -190,16 +200,31 @@ export function renderTodayPlan() {
     });
   }
 
-  function recentLogs() {
-    const log = readLog().filter(e => e.kind === "today_plan").slice(0, 5);
+  function logStepResult(result) {
+    lastStepResult = result; // "done" | "stuck"
+    safeAppendLog({
+      kind: "today_plan_step",
+      when: nowISO(),
+      template: plan.template || "custom",
+      step: activeStep,
+      stepText: getStepText(activeStep),
+      minutes: durationMin,
+      result,
+      stoppedEarly,
+      earlyStopReason,
+      earlyStopElapsedSec,
+      build: BUILD
+    });
+  }
 
+  function recentPlans() {
+    const log = readLog().filter(e => e.kind === "today_plan").slice(0, 5);
     if (!log.length) {
       return el("div", {}, [
         el("h2", { class: "h2" }, ["Recent plans"]),
         el("p", { class: "p" }, ["No saved plans yet. Create one and it will show here."]),
       ]);
     }
-
     return el("div", {}, [
       el("h2", { class: "h2" }, ["Recent plans"]),
       ...log.map(e =>
@@ -229,7 +254,7 @@ export function renderTodayPlan() {
   function templatesPanel() {
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["Templates (tap to fill)"]),
-      el("p", { class: "small" }, ["Tap one to load. Then edit your 3 steps if needed."]),
+      el("p", { class: "small" }, ["Tap one to load. Then tweak the 3 steps if needed."]),
       el("div", { class: "btnRow" }, TEMPLATES.map(t =>
         el("button", { class: "btn", type: "button", onClick: () => applyTemplate(t) }, [t.label])
       )),
@@ -255,7 +280,7 @@ export function renderTodayPlan() {
     ]);
   }
 
-  function editor() {
+  function editorCard() {
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["Three steps. Nothing else."]),
       inputRow("Step 1", "a"),
@@ -268,48 +293,95 @@ export function renderTodayPlan() {
     ]);
   }
 
-  function timerCard() {
-    if (!running) {
-      return el("div", { class: "card cardPad" }, [
-        el("h2", { class: "h2" }, ["Timer"]),
-        el("div", { class: "badge" }, [`Planning sprint • ${durationMin} min`]),
-        el("p", { class: "p" }, ["Press Start. When the timer ends, we lock Step 1."]),
-        el("div", { class: "btnRow" }, [
-          el("button", {
-            class: "btn",
-            type: "button",
-            onClick: () => { durationMin = 3; rerender(mode); }
-          }, ["3 min"]),
-          el("button", {
-            class: "btn",
-            type: "button",
-            onClick: () => { durationMin = 5; rerender(mode); }
-          }, ["5 min"]),
-          el("button", {
-            class: "btn",
-            type: "button",
-            onClick: () => { durationMin = 10; rerender(mode); }
-          }, ["10 min"]),
-        ]),
-        el("div", { class: "btnRow" }, [
-          el("button", {
-            class: `btn btnPrimary`,
-            type: "button",
-            onClick: startTimer,
-            disabled: canStart() ? null : "true"
-          }, ["Start"]),
-        ]),
-        !canStart()
-          ? el("p", { class: "small", style: "margin-top:10px" }, ["Add at least one step before starting."])
-          : el("p", { class: "small", style: "margin-top:10px" }, ["Keep it simple. No perfect plan."]),
-      ]);
-    }
+  function stepSprintCard() {
+    const s = nonEmptySteps();
+    const stepText = getStepText(activeStep);
+    const stepLabel = `Step ${activeStep}`;
 
+    return el("div", { class: "card cardPad" }, [
+      el("h2", { class: "h2" }, ["Step Sprint"]),
+      el("div", { class: "badge" }, [stepLabel]),
+      el("p", { class: "p" }, [stepText || "Step is empty. Add text above first."]),
+      el("div", { class: "btnRow" }, [
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => { activeStep = 1; rerender(mode); }
+        }, ["Step 1"]),
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => { activeStep = 2; rerender(mode); }
+        }, ["Step 2"]),
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => { activeStep = 3; rerender(mode); }
+        }, ["Step 3"]),
+      ]),
+      el("div", { class: "btnRow" }, [
+        el("button", { class: "btn", type: "button", onClick: () => { stepMinutes = 5; durationMin = 5; rerender(mode); } }, ["5 min"]),
+        el("button", { class: "btn", type: "button", onClick: () => { stepMinutes = 10; durationMin = 10; rerender(mode); } }, ["10 min"]),
+        el("button", { class: "btn", type: "button", onClick: () => { stepMinutes = 25; durationMin = 25; rerender(mode); } }, ["25 min"]),
+      ]),
+      el("div", { class: "btnRow" }, [
+        el("button", {
+          class: "btn btnPrimary",
+          type: "button",
+          onClick: () => {
+            if (!s.any) return;
+            if (!getStepText(activeStep)) return;
+            durationMin = stepMinutes;
+            startTimer("step");
+          }
+        }, ["Start Step"]),
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => (location.hash = "#/green/move")
+        }, ["Move Forward"]),
+      ]),
+      !getStepText(activeStep)
+        ? el("p", { class: "small", style: "margin-top:10px" }, ["That step is empty. Add text above, then start."])
+        : el("p", { class: "small", style: "margin-top:10px" }, ["Do the step until the timer ends. No optimizing."]),
+    ]);
+  }
+
+  function planSprintCard() {
+    const s = nonEmptySteps();
+    return el("div", { class: "card cardPad" }, [
+      el("h2", { class: "h2" }, ["Plan Sprint (optional)"]),
+      el("div", { class: "badge" }, ["Tighten your 3 steps"]),
+      el("p", { class: "p" }, ["Use this if you’re still fuzzy. Otherwise, start Step 1."]),
+      el("div", { class: "btnRow" }, [
+        el("button", { class: "btn", type: "button", onClick: () => { durationMin = 3; rerender(mode); } }, ["3 min"]),
+        el("button", { class: "btn", type: "button", onClick: () => { durationMin = 5; rerender(mode); } }, ["5 min"]),
+        el("button", { class: "btn", type: "button", onClick: () => { durationMin = 10; rerender(mode); } }, ["10 min"]),
+      ]),
+      el("div", { class: "btnRow" }, [
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => startTimer("plan"),
+          disabled: s.any ? null : "true"
+        }, ["Start plan sprint"]),
+      ]),
+      !s.any
+        ? el("p", { class: "small", style: "margin-top:10px" }, ["Add at least one step first."])
+        : el("p", { class: "small", style: "margin-top:10px" }, ["If it’s good enough: skip this and start Step 1."]),
+    ]);
+  }
+
+  function timerRunningCard() {
     const remaining = clamp(endAt - Date.now(), 0, durationMin * 60 * 1000);
+    const title = timerKind === "plan" ? "Planning Sprint" : `Step ${activeStep} Sprint`;
+    const subtitle = timerKind === "step" ? (getStepText(activeStep) || "") : "";
+
     return el("div", { class: "card cardPad" }, [
       el("h2", { class: "h2" }, ["Timer"]),
+      el("div", { class: "badge" }, [`${title} • ${durationMin} min`]),
+      subtitle ? el("p", { class: "p" }, [subtitle]) : null,
       el("div", { class: "timerBox" }, [
-        el("div", { class: "badge" }, [`Active • ${durationMin} min`]),
         el("div", { class: "timerReadout", "data-timer-readout": "1" }, [formatMMSS(remaining)]),
         el("div", { class: "progressBar" }, [
           el("div", { class: "progressFill", "data-progress-fill": "1" }, []),
@@ -321,86 +393,128 @@ export function renderTodayPlan() {
     ]);
   }
 
-  function statusCard(modeNow) {
-    if (modeNow === "early_stop") {
+  function statusCard() {
+    if (mode === "early_stop") {
+      const label = timerKind === "plan" ? "planning" : "working";
       return el("div", { class: "card cardPad" }, [
         el("div", { class: "badge" }, ["Stopped early"]),
-        el("p", { class: "p" }, [`You planned for ${earlyStopElapsedSec}s. Why are you stopping?`]),
+        el("p", { class: "p" }, [`You were ${label} for ${earlyStopElapsedSec}s. Why are you stopping?`]),
         el("div", { class: "btnRow" }, [
           el("button", {
             class: "btn btnPrimary",
             type: "button",
             onClick: () => { earlyStopReason = "safe"; mode = "checkout"; rerender(mode); }
-          }, ["Plan is basically set"]),
+          }, ["I’m good / enough for now"]),
           el("button", {
             class: "btn",
             type: "button",
             onClick: () => {
               earlyStopReason = "bailed";
-              // treat as unclear path immediately
-              logOutcome("unclear");
-              mode = "routed";
+              if (timerKind === "plan") {
+                logPlanSave("unclear");
+                mode = "routed";
+              } else {
+                logStepResult("stuck");
+                mode = "routed";
+              }
               rerender(mode);
             }
-          }, ["Still unclear / resisting it"]),
+          }, ["Still stuck / avoiding it"]),
         ]),
-        el("p", { class: "small", style: "margin-top:10px" }, ["Honesty keeps Praxis accurate."]),
       ]);
     }
 
-    if (modeNow === "checkout") {
+    if (mode === "checkout") {
+      // If we just finished planning sprint -> ask plan set?
+      if (timerKind === "plan") {
+        return el("div", { class: "card cardPad" }, [
+          el("div", { class: "badge" }, ["Check-out"]),
+          el("p", { class: "p" }, ["Is this plan set enough to do Step 1?"]),
+          el("div", { class: "btnRow" }, [
+            el("button", {
+              class: "btn btnPrimary",
+              type: "button",
+              onClick: () => { logPlanSave("set"); mode = "routed"; rerender(mode); }
+            }, ["Plan is set"]),
+            el("button", {
+              class: "btn",
+              type: "button",
+              onClick: () => { logPlanSave("unclear"); mode = "routed"; rerender(mode); }
+            }, ["Still unclear"]),
+          ]),
+        ]);
+      }
+
+      // finished a step sprint -> ask if step done?
       return el("div", { class: "card cardPad" }, [
-        el("div", { class: "badge" }, ["Check-out"]),
-        el("p", { class: "p" }, ["Is your plan set enough to do Step 1?"]),
+        el("div", { class: "badge" }, [`Step ${activeStep} check-out`]),
+        el("p", { class: "p" }, ["Did you complete the step (or move it forward enough)?"]),
         el("div", { class: "btnRow" }, [
           el("button", {
             class: "btn btnPrimary",
             type: "button",
-            onClick: () => { logOutcome("set"); mode = "routed"; rerender(mode); }
-          }, ["Plan is set"]),
+            onClick: () => { logStepResult("done"); mode = "routed"; rerender(mode); }
+          }, ["Yes, done"]),
           el("button", {
             class: "btn",
             type: "button",
-            onClick: () => { logOutcome("unclear"); mode = "routed"; rerender(mode); }
-          }, ["Still unclear"]),
+            onClick: () => { logStepResult("stuck"); mode = "routed"; rerender(mode); }
+          }, ["Still stuck"]),
         ]),
       ]);
     }
 
-    if (modeNow === "routed") {
-      const set = lastOutcome === "set";
+    if (mode === "routed") {
+      // Routing differs depending on what we just did
+      const fromPlan = timerKind === "plan";
+      const set = fromPlan ? planOutcome === "set" : lastStepResult === "done";
+      const stuck = fromPlan ? planOutcome === "unclear" : lastStepResult === "stuck";
+
+      const nextStep = Math.min(3, activeStep + 1);
 
       return el("div", { class: "card cardPad" }, [
         el("div", { class: "badge" }, ["Next move"]),
         el("p", { class: "p" }, [
-          set
-            ? "Good. Do Step 1 now. Not all three."
-            : "Okay. Don’t journal. Get clarity, then lock one move."
+          fromPlan
+            ? (set ? "Good. Start Step 1 now." : "Okay. Get clarity, then lock one move.")
+            : (set ? `Good. Move to Step ${nextStep}.` : "Okay. Change state, then try again.")
         ]),
         el("div", { class: "btnRow" }, [
-          set
-            ? el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/green/move") }, ["Move Forward"])
-            : el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/reflect") }, ["Clarify"]),
+          // Primary button
+          set && !fromPlan
+            ? el("button", {
+                class: "btn btnPrimary",
+                type: "button",
+                onClick: () => { activeStep = nextStep; mode = "edit"; rerender(mode); }
+              }, [`Go to Step ${nextStep}`])
+            : set && fromPlan
+            ? el("button", {
+                class: "btn btnPrimary",
+                type: "button",
+                onClick: () => { activeStep = 1; mode = "edit"; rerender(mode); }
+              }, ["Start Step 1"])
+            : el("button", {
+                class: "btn btnPrimary",
+                type: "button",
+                onClick: () => (location.hash = "#/reflect")
+              }, ["Clarify"]),
 
-          set
-            ? el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/next") }, ["Find Next Step"])
+          // Secondary
+          stuck
+            ? el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/yellow/calm") }, ["Calm Me Down"])
             : el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/next") }, ["Find Next Step"]),
 
-          set
-            ? el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Back to Reset"])
-            : el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/yellow/calm") }, ["Calm Me Down"]),
+          // Tertiary
+          el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/move") }, ["Move Forward"]),
         ]),
         el("div", { class: "btnRow" }, [
-          el("button", {
-            class: "btn",
-            type: "button",
-            onClick: () => { mode = "edit"; rerender(mode); }
-          }, ["Edit plan"]),
+          el("button", { class: "btn", type: "button", onClick: () => { mode = "edit"; rerender(mode); } }, ["Back to plan"]),
+          el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
         ]),
       ]);
     }
 
-    // edit/running helper
+    // default helper
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["Rule"]),
       el("p", { class: "p" }, ["Three steps only. Step 1 is the only thing that matters right now."]),
@@ -412,16 +526,20 @@ export function renderTodayPlan() {
     wrap.innerHTML = "";
     wrap.appendChild(header());
 
-    // Always show templates + editor (this is the planning surface)
+    // planning surface
     wrap.appendChild(templatesPanel());
-    wrap.appendChild(editor());
-    wrap.appendChild(timerCard());
+    wrap.appendChild(editorCard());
 
-    // Status changes with mode
-    wrap.appendChild(statusCard(mode));
+    // action surface
+    if (mode === "running_plan" || mode === "running_step") {
+      wrap.appendChild(timerRunningCard());
+    } else {
+      wrap.appendChild(stepSprintCard()); // ✅ primary action: do Step 1
+      wrap.appendChild(planSprintCard()); // optional
+    }
 
-    // Optional: recent plans (light history, only here)
-    wrap.appendChild(el("div", { class: "card cardPad" }, [recentLogs()]));
+    wrap.appendChild(statusCard());
+    wrap.appendChild(el("div", { class: "card cardPad" }, [recentPlans()]));
 
     if (running) updateTimerUI();
   }
