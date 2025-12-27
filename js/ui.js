@@ -1,18 +1,15 @@
 // js/ui.js  (FULL REPLACEMENT)
 import { readLog } from "./storage.js";
 
-const BUILD_HOME = "UI-HOME-3";
+const BUILD_HOME = "UI-HOME-4";
 
-// existing keys
 const KEY_DONE = "praxis_onboarding_done";
 const KEY_SNOOZE_UNTIL = "praxis_suggest_snooze_until";
 const KEY_SAFETY_SNOOZE_UNTIL = "praxis_safety_snooze_until";
 const KEY_LAST_EMERGENCY = "praxis_last_emergency_ts";
 
-// ✅ session-only UI prefs (survive rerenders + hash changes)
-const KEY_UI_SHOW_FEELING = "praxis_ui_show_feeling";
-const KEY_UI_SHOW_GUIDANCE = "praxis_ui_show_guidance";
-const KEY_UI_SHOW_TOOLS = "praxis_ui_show_tools";
+// session-only UI toggle
+const KEY_HOME_MORE_TOOLS = "praxis_home_more_tools";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -94,15 +91,6 @@ function routeForClarifyMove(moveId) {
   return map[moveId] || "#/home";
 }
 
-function rerenderHomeIfActive() {
-  if ((location.hash || "#/home").startsWith("#/home")) {
-    setMain(renderHome());
-    window.scrollTo(0, 0);
-    return true;
-  }
-  return false;
-}
-
 function hasRecentEmergencyFromSession() {
   const lastEm = getLastEmergencyMs();
   return !!(lastEm && (Date.now() - lastEm) <= 60 * 60 * 1000);
@@ -112,31 +100,6 @@ function hasRecentEmergencyFromLog(log) {
   return !!(lastEmergency && minutesAgo(lastEmergency.when) <= 60);
 }
 
-// --- session UI prefs helpers ---
-function ssGetBool(key, fallback = false) {
-  try {
-    const v = sessionStorage.getItem(key);
-    if (v === null) return fallback;
-    return v === "1";
-  } catch {
-    return fallback;
-  }
-}
-function ssSetBool(key, value) {
-  try { sessionStorage.setItem(key, value ? "1" : "0"); } catch {}
-}
-function toggleExclusive(which) {
-  // Only one main section visible at a time (prevents “long home”)
-  const showFeeling = which === "feeling";
-  const showGuidance = which === "guidance";
-  const showTools = which === "tools";
-
-  ssSetBool(KEY_UI_SHOW_FEELING, showFeeling);
-  ssSetBool(KEY_UI_SHOW_GUIDANCE, showGuidance);
-  ssSetBool(KEY_UI_SHOW_TOOLS, showTools);
-}
-
-// --- suggestion engine ---
 function computeSuggestion() {
   let log = [];
   try { log = readLog().slice(0, 120); } catch { log = []; }
@@ -144,7 +107,6 @@ function computeSuggestion() {
   const safetyActive = hasRecentEmergencyFromSession() || hasRecentEmergencyFromLog(log);
   const safetySnoozed = isSnoozedKey(KEY_SAFETY_SNOOZE_UNTIL);
 
-  // Safety (can be hidden for 2h)
   if (safetyActive && !safetySnoozed) {
     return {
       type: "safety",
@@ -156,7 +118,7 @@ function computeSuggestion() {
     };
   }
 
-  // Normal suggestions respect normal snooze
+  // Normal suggestions respect snooze
   if (isSnoozedKey(KEY_SNOOZE_UNTIL)) return null;
 
   if (!log.length) {
@@ -256,30 +218,6 @@ function computeSuggestion() {
   };
 }
 
-function suggestionCard() {
-  const s = computeSuggestion();
-  if (!s) return null;
-
-  const hideKey = s.type === "safety" ? KEY_SAFETY_SNOOZE_UNTIL : KEY_SNOOZE_UNTIL;
-  const hideLabel = "Hide (2h)";
-
-  return el("div", { class: "card cardPad" }, [
-    el("div", { class: "badge" }, [s.badge || "Suggestion"]),
-    el("h2", { class: "h2" }, [s.title]),
-    el("p", { class: "p" }, [s.text]),
-    el("div", { class: "btnRow" }, [
-      el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = s.primary.to) }, [s.primary.label]),
-      el("button", { class: "btn", type: "button", onClick: () => (location.hash = s.secondary.to) }, [s.secondary.label]),
-      el("button", {
-        class: "btn",
-        type: "button",
-        onClick: () => { snoozeKey(hideKey, 2); rerenderHomeIfActive() || (location.hash = "#/home"); }
-      }, [hideLabel]),
-    ])
-  ]);
-}
-
-// --- tiles ---
 function baseTiles() {
   return [
     { title: "Calm Me Down", sub: "Drop intensity fast", hint: "2 minutes. Guided.", dot: "dotYellow", to: "#/yellow/calm" },
@@ -334,7 +272,20 @@ function tileButton(t) {
   );
 }
 
-// --- minimal “start by feeling” section (kept, but NOT always shown) ---
+function getSessionBool(key, fallback = false) {
+  try {
+    const v = sessionStorage.getItem(key);
+    if (v === "1") return true;
+    if (v === "0") return false;
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+function setSessionBool(key, val) {
+  try { sessionStorage.setItem(key, val ? "1" : "0"); } catch {}
+}
+
 function feelingTile({ label, hint, go, goDot }) {
   return el("button", {
     class: "actionTile",
@@ -363,10 +314,7 @@ const FEELING_OPTIONS = [
 export function renderHome() {
   const wrap = el("div", { class: "homeShell" });
 
-  // read UI prefs
-  let showFeeling = ssGetBool(KEY_UI_SHOW_FEELING, false);
-  let showGuidance = ssGetBool(KEY_UI_SHOW_GUIDANCE, false);
-  let showTools = ssGetBool(KEY_UI_SHOW_TOOLS, false);
+  let showMoreTools = getSessionBool(KEY_HOME_MORE_TOOLS, false);
 
   function header() {
     const normalSnoozed = isSnoozedKey(KEY_SNOOZE_UNTIL);
@@ -380,7 +328,7 @@ export function renderHome() {
         el("button", {
           class: "btn",
           type: "button",
-          onClick: () => { clearKey(KEY_SAFETY_SNOOZE_UNTIL); rerenderHomeIfActive() || (location.hash = "#/home"); }
+          onClick: () => { clearKey(KEY_SAFETY_SNOOZE_UNTIL); rerender(); }
         }, ["Show safety"])
       );
     } else if (normalSnoozed) {
@@ -388,108 +336,125 @@ export function renderHome() {
         el("button", {
           class: "btn",
           type: "button",
-          onClick: () => { clearKey(KEY_SNOOZE_UNTIL); rerenderHomeIfActive() || (location.hash = "#/home"); }
+          onClick: () => { clearKey(KEY_SNOOZE_UNTIL); rerender(); }
         }, ["Show suggestions"])
       );
     }
 
     return el("div", { class: "homeHeader" }, [
       el("h1", { class: "h1" }, ["Reset"]),
-      el("p", { class: "p" }, ["Keep it simple. Start → do → stop."]),
+      el("p", { class: "p" }, ["Start with your state. Praxis routes you."]),
       el("div", { class: "small" }, [`Home ${BUILD_HOME}`]),
       headerButtons.length ? el("div", { class: "btnRow", style: "margin-top:10px" }, headerButtons) : null,
     ].filter(Boolean));
   }
 
-  function modeButtonsCard() {
-    const btn = (label, active, onClick) =>
-      el("button", { class: `btn ${active ? "btnPrimary" : ""}`.trim(), type: "button", onClick }, [label]);
-
+  function startCard() {
     return el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["Choose a mode"]),
-      el("p", { class: "small" }, ["Pick one. This prevents the Home screen from getting long and repetitive."]),
-      el("div", { class: "btnRow" }, [
-        btn("Start (feeling)", showFeeling, () => { toggleExclusive("feeling"); rerender(); }),
-        btn("Guidance", showGuidance, () => { toggleExclusive("guidance"); rerender(); }),
-        btn("Tools", showTools, () => { toggleExclusive("tools"); rerender(); }),
-      ]),
-    ]);
-  }
-
-  function feelingCard() {
-    return el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["Start"]),
+      el("div", { class: "badge" }, ["Start here"]),
       el("h2", { class: "h2" }, ["How are you feeling right now?"]),
-      el("p", { class: "small" }, ["One tap. Praxis routes you."]),
+      el("p", { class: "small" }, ["One tap. No thinking."]),
       el("div", { class: "flowShell", style: "margin-top:10px" }, FEELING_OPTIONS.map(o => feelingTile(o))),
     ]);
   }
 
-  function guidanceSection() {
-    const sc = suggestionCard();
-    return el("div", {}, [
-      el("div", { class: "card cardPad" }, [
-        el("div", { class: "badge" }, ["Guidance"]),
-        el("p", { class: "small" }, ["One recommended next move, based on recent usage."]),
-      ]),
-      sc ? sc : el("div", { class: "card cardPad" }, [
-        el("p", { class: "p" }, ["No guidance right now (or it’s hidden)."]),
-        el("p", { class: "small" }, ["Use Start (feeling) or open Tools."]),
-      ]),
+  function suggestionCard() {
+    const s = computeSuggestion();
+    if (!s) return null;
+
+    const hideKey = s.type === "safety" ? KEY_SAFETY_SNOOZE_UNTIL : KEY_SNOOZE_UNTIL;
+    const hideLabel = "Hide (2h)";
+
+    return el("div", { class: "card cardPad" }, [
+      el("div", { class: "badge" }, [s.badge || "Suggestion"]),
+      el("h2", { class: "h2" }, [s.title]),
+      el("p", { class: "p" }, [s.text]),
+      el("div", { class: "btnRow" }, [
+        el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = s.primary.to) }, [s.primary.label]),
+        el("button", { class: "btn", type: "button", onClick: () => (location.hash = s.secondary.to) }, [s.secondary.label]),
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => { snoozeKey(hideKey, 2); rerender(); }
+        }, [hideLabel]),
+      ])
     ]);
   }
 
-  function toolsSection() {
+  function coreToolsCard() {
+    const core = [
+      { title: "Calm Me Down", sub: "Drop intensity fast", dot: "dotYellow", to: "#/yellow/calm" },
+      { title: "Stop the Urge", sub: "Pause before acting", dot: "dotYellow", to: "#/yellow/stop" },
+      { title: "Move Forward", sub: "Body → progress", dot: "dotGreen", to: "#/green/move" },
+      { title: "Today’s Direction", sub: "Pick a lane", dot: "dotGreen", to: "#/green/direction" },
+      { title: "Today’s Plan", sub: "3 steps only", dot: "dotGreen", to: "#/green/today" },
+    ];
+
+    return el("div", { class: "card cardPad" }, [
+      el("div", { class: "badge" }, ["Core tools"]),
+      el("p", { class: "small" }, ["If you already know what you need, tap one."]),
+      el("div", { class: "homeGrid" }, core.map(t =>
+        el("button", { class: "actionTile", type: "button", onClick: () => (location.hash = t.to) }, [
+          el("div", { class: "tileTop" }, [
+            el("div", {}, [
+              el("div", { class: "tileTitle" }, [t.title]),
+              el("div", { class: "tileSub" }, [t.sub]),
+            ]),
+            el("div", { class: `zoneDot ${t.dot}` }, []),
+          ]),
+          el("p", { class: "tileHint" }, ["Tap"]),
+        ])
+      )),
+    ]);
+  }
+
+  function moreToolsToggle() {
+    return el("div", { class: "card cardPad" }, [
+      el("div", { class: "btnRow" }, [
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => {
+            showMoreTools = !showMoreTools;
+            setSessionBool(KEY_HOME_MORE_TOOLS, showMoreTools);
+            rerender();
+          }
+        }, [showMoreTools ? "Hide more tools" : "Show more tools"]),
+      ]),
+      el("p", { class: "small", style: "margin-top:8px" }, ["Everything else lives here (History, Clarify, Onboarding, etc)."]),
+    ]);
+  }
+
+  function moreToolsSection() {
     const tiles = getTiles();
     return el("div", {}, [
       el("div", { class: "card cardPad" }, [
-        el("div", { class: "badge" }, ["Tools"]),
-        el("p", { class: "small" }, ["Use these if you already know what you need."]),
+        el("div", { class: "badge" }, ["More tools"]),
+        el("p", { class: "small" }, ["Use these after you’re moving, or if you’re exploring."]),
       ]),
       el("div", { class: "homeGrid" }, tiles.map(tileButton)),
     ]);
   }
 
   function rerender() {
-    // refresh local flags from session storage (single source of truth)
-    showFeeling = ssGetBool(KEY_UI_SHOW_FEELING, false);
-    showGuidance = ssGetBool(KEY_UI_SHOW_GUIDANCE, false);
-    showTools = ssGetBool(KEY_UI_SHOW_TOOLS, false);
-
     wrap.innerHTML = "";
     wrap.appendChild(header());
 
-    // Safety always wins (unless snoozed by your existing logic)
+    // Always visible: Start + Guidance (if available) + Core tools
+    wrap.appendChild(startCard());
+
     const s = computeSuggestion();
-    const mustShowSafety = s && s.type === "safety";
-    if (mustShowSafety) {
-      const sc = suggestionCard();
-      if (sc) wrap.appendChild(sc);
-      // After safety, still show mode selector (so user can choose tools if safe)
-      wrap.appendChild(modeButtonsCard());
-      if (showTools) wrap.appendChild(toolsSection());
-      else if (showFeeling) wrap.appendChild(feelingCard());
-      else if (showGuidance) wrap.appendChild(guidanceSection());
-      return;
+    const safetyForced = !!(s && s.type === "safety");
+    const sc = suggestionCard();
+    if (sc && (safetyForced || true)) {
+      // ✅ show suggestion whenever it exists; user can Hide(2h) if they want
+      wrap.appendChild(sc);
     }
 
-    // Default Home: simple + not long
-    wrap.appendChild(modeButtonsCard());
+    wrap.appendChild(coreToolsCard());
+    wrap.appendChild(moreToolsToggle());
 
-    if (showFeeling) wrap.appendChild(feelingCard());
-    else if (showGuidance) wrap.appendChild(guidanceSection());
-    else if (showTools) wrap.appendChild(toolsSection());
-    else {
-      // ✅ default when nothing selected: keep it minimal
-      wrap.appendChild(el("div", { class: "card cardPad" }, [
-        el("div", { class: "badge" }, ["Default"]),
-        el("p", { class: "p" }, ["Choose a mode above to begin."]),
-        el("div", { class: "btnRow" }, [
-          el("button", { class: "btn btnPrimary", type: "button", onClick: () => { toggleExclusive("feeling"); rerender(); } }, ["Start (feeling)"]),
-          el("button", { class: "btn", type: "button", onClick: () => { toggleExclusive("guidance"); rerender(); } }, ["Guidance"]),
-        ]),
-      ]));
-    }
+    if (showMoreTools) wrap.appendChild(moreToolsSection());
   }
 
   rerender();
