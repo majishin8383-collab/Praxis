@@ -1,14 +1,9 @@
 // js/ui.js (FULL REPLACEMENT)
-// Home = "How are you feeling?" + optional "Show tools".
-// No "Start here / today’s lane / quick start" content on landing.
-// Safety suggestion can auto-show ONLY if safety is active.
-
 import { readLog } from "./storage.js";
 
-const BUILD_HOME = "UI-HOME-3";
+const BUILD_HOME = "UI-HOME-4";
 
 const KEY_DONE = "praxis_onboarding_done";
-const KEY_SNOOZE_UNTIL = "praxis_suggest_snooze_until"; // kept for compatibility
 const KEY_SAFETY_SNOOZE_UNTIL = "praxis_safety_snooze_until";
 const KEY_LAST_EMERGENCY = "praxis_last_emergency_ts";
 
@@ -67,40 +62,12 @@ function getLastEmergencyMs() {
     return 0;
   }
 }
-
-function startOfTodayMs() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
-}
-
 function minutesAgo(iso) {
   if (!iso) return Infinity;
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return Infinity;
   return (Date.now() - t) / (60 * 1000);
 }
-
-function routeForClarifyMove(moveId) {
-  const map = {
-    pause24: "#/home",
-    calm: "#/yellow/calm",
-    shield: "#/yellow/stop",
-    move: "#/green/move",
-    direction: "#/green/direction",
-  };
-  return map[moveId] || "#/home";
-}
-
-function rerenderHomeIfActive() {
-  if ((location.hash || "#/home").startsWith("#/home")) {
-    setMain(renderHome());
-    window.scrollTo(0, 0);
-    return true;
-  }
-  return false;
-}
-
 function hasRecentEmergencyFromSession() {
   const lastEm = getLastEmergencyMs();
   return !!(lastEm && (Date.now() - lastEm) <= 60 * 60 * 1000);
@@ -110,8 +77,7 @@ function hasRecentEmergencyFromLog(log) {
   return !!(lastEmergency && minutesAgo(lastEmergency.when) <= 60);
 }
 
-// Only used for safety auto-suggestion (home landing stays clean otherwise)
-function computeSuggestionSafetyOnly() {
+function computeSafetySuggestion() {
   let log = [];
   try { log = readLog().slice(0, 120); } catch { log = []; }
 
@@ -120,7 +86,6 @@ function computeSuggestionSafetyOnly() {
 
   if (safetyActive && !safetySnoozed) {
     return {
-      type: "safety",
       badge: "Safety",
       title: "Stabilize first",
       text: "If safety is still at risk, use Emergency now. If you’re safe enough, do Calm for 2 minutes.",
@@ -131,69 +96,12 @@ function computeSuggestionSafetyOnly() {
   return null;
 }
 
-function baseTiles() {
-  return [
-    { title: "Calm Me Down", sub: "Drop intensity fast", hint: "2 minutes. Guided.", dot: "dotYellow", to: "#/yellow/calm" },
-    { title: "Stop the Urge", sub: "Pause before acting", hint: "Buy time. Add friction.", dot: "dotYellow", to: "#/yellow/stop" },
-    { title: "Emergency", sub: "Immediate support", hint: "Use when safety is at risk.", dot: "dotRed", to: "#/red/emergency" },
-    { title: "Move Forward", sub: "Body first. Then progress.", hint: "Pick a ladder. Do it until the timer ends.", dot: "dotGreen", to: "#/green/move" },
-    { title: "Find Your Next Step", sub: "Tap → go", hint: "Choose what’s closest.", dot: "dotGreen", to: "#/green/next" },
-    { title: "Choose Today’s Direction", sub: "Pick a lane for today", hint: "Stability / Maintenance / Progress / Recovery.", dot: "dotGreen", to: "#/green/direction" },
-    { title: "Today’s Plan", sub: "Three steps only", hint: "Pick a template, then fill 3 moves.", dot: "dotGreen", to: "#/green/today" },
-    { title: "Clarify the Next Move", sub: "Lock a move", hint: "Tap quickly. End with one action.", dot: "dotGreen", to: "#/reflect" },
-    { title: "History", sub: "See your momentum", hint: "Recent sessions + summary.", dot: "dotGreen", to: "#/history" },
-  ];
-}
-
-function onboardingTile(done) {
-  return {
-    title: done ? "Quick Start (replay)" : "How Praxis Works",
-    sub: done ? "Replay anytime" : "Start here",
-    hint: "Tap → timer → lock a move → do it.",
-    dot: "dotGreen",
-    to: "#/onboarding",
-  };
-}
-
-function getTiles() {
-  const done = onboardingDone();
-  const tiles = baseTiles();
-  const onboard = onboardingTile(done);
-
-  // Keep onboarding available, but not dominant.
-  // Insert before History if present.
-  const historyIndex = tiles.findIndex(t => t.to === "#/history");
-  if (historyIndex >= 0) tiles.splice(historyIndex, 0, onboard);
-  else tiles.push(onboard);
-
-  return tiles;
-}
-
-function tileButton(t) {
-  return el(
-    "button",
-    { class: "actionTile", type: "button", onClick: () => (location.hash = t.to) },
-    [
-      el("div", { class: "tileTop" }, [
-        el("div", {}, [
-          el("div", { class: "tileTitle" }, [t.title]),
-          el("div", { class: "tileSub" }, [t.sub]),
-        ]),
-        el("div", { class: `zoneDot ${t.dot}` }, []),
-      ]),
-      el("p", { class: "tileHint" }, [t.hint]),
-    ]
-  );
-}
-
-function suggestionCardSafetyOnly() {
-  const s = computeSuggestionSafetyOnly();
+function suggestionCard() {
+  const s = computeSafetySuggestion();
   if (!s) return null;
 
-  const hideKey = KEY_SAFETY_SNOOZE_UNTIL;
-
   return el("div", { class: "card cardPad" }, [
-    el("div", { class: "badge" }, [s.badge || "Safety"]),
+    el("div", { class: "badge" }, [s.badge]),
     el("h2", { class: "h2" }, [s.title]),
     el("p", { class: "p" }, [s.text]),
     el("div", { class: "btnRow" }, [
@@ -202,11 +110,36 @@ function suggestionCardSafetyOnly() {
       el("button", {
         class: "btn",
         type: "button",
-        onClick: () => { snoozeKey(hideKey, 2); rerenderHomeIfActive() || (location.hash = "#/home"); }
+        onClick: () => { snoozeKey(KEY_SAFETY_SNOOZE_UNTIL, 2); location.hash = "#/home"; }
       }, ["Hide (2h)"]),
     ])
   ]);
 }
+
+function toolRow({ title, sub, hint, dot, to }) {
+  return el(
+    "button",
+    { class: "actionTile", type: "button", onClick: () => (location.hash = to) },
+    [
+      el("div", { class: "tileTop" }, [
+        el("div", {}, [
+          el("div", { class: "tileTitle" }, [title]),
+          el("div", { class: "tileSub" }, [sub]),
+        ]),
+        el("div", { class: `zoneDot ${dot}` }, []),
+      ]),
+      hint ? el("p", { class: "tileHint" }, [hint]) : null,
+    ].filter(Boolean)
+  );
+}
+
+const FEELING_OPTIONS = [
+  { label: "Overwhelmed / unsafe", hint: "Get real help now.", go: "#/red/emergency", goDot: "dotRed" },
+  { label: "Anxious / urge-driven", hint: "Lower intensity first.", go: "#/yellow/calm", goDot: "dotYellow" },
+  { label: "Urge to act / message / react", hint: "Pause before acting.", go: "#/yellow/stop", goDot: "dotYellow" },
+  { label: "Stuck / frozen", hint: "Body first. Then progress.", go: "#/green/move", goDot: "dotGreen" },
+  { label: "I’m okay — I need direction", hint: "Pick a lane for today.", go: "#/green/direction", goDot: "dotGreen" },
+];
 
 function feelingTile({ label, hint, go, goDot }) {
   return el("button", {
@@ -225,87 +158,138 @@ function feelingTile({ label, hint, go, goDot }) {
   ]);
 }
 
-const FEELING_OPTIONS = [
-  { label: "Overwhelmed / unsafe", hint: "Get real help now.", go: "#/red/emergency", goDot: "dotRed" },
-  { label: "Anxious / urge-driven", hint: "Lower intensity first.", go: "#/yellow/calm", goDot: "dotYellow" },
-  { label: "Urge to act / message / react", hint: "Pause before acting.", go: "#/yellow/stop", goDot: "dotYellow" },
-  { label: "Stuck / frozen", hint: "Body first. Then progress.", go: "#/green/move", goDot: "dotGreen" },
-  { label: "I’m okay — I need direction", hint: "Pick a lane for today.", go: "#/green/direction", goDot: "dotGreen" },
-];
+function toolsModel() {
+  const done = onboardingDone();
+
+  const CORE = [
+    { title: "Calm Me Down", sub: "Drop intensity fast", hint: "2 minutes. Guided.", dot: "dotYellow", to: "#/yellow/calm" },
+    { title: "Stop the Urge", sub: "Pause before acting", hint: "Buy time. Add friction.", dot: "dotYellow", to: "#/yellow/stop" },
+    { title: "Move Forward", sub: "Body first. Then progress.", hint: "Pick a ladder. Stop when timer ends.", dot: "dotGreen", to: "#/green/move" },
+    { title: "Emergency", sub: "Immediate support", hint: "Use when safety is at risk.", dot: "dotRed", to: "#/red/emergency" },
+  ];
+
+  const PLAN = [
+    { title: "Choose Today’s Direction", sub: "Pick a lane", hint: "Stability / Maintenance / Progress / Recovery.", dot: "dotGreen", to: "#/green/direction" },
+    { title: "Today’s Plan", sub: "Three steps only", hint: "Do Step 1 first.", dot: "dotGreen", to: "#/green/today" },
+    { title: "Clarify the Next Move", sub: "Lock one action", hint: "Tap quickly. End with one move.", dot: "dotGreen", to: "#/reflect" },
+  ];
+
+  // NOTE: “Find Next Step” is redundant with “How are you feeling”
+  // so it lives in Extras as a fallback, not a core tool.
+  const EXTRAS = [
+    { title: "History", sub: "See momentum", hint: "Recent sessions + summary.", dot: "dotGreen", to: "#/history" },
+    { title: done ? "Quick Start (replay)" : "How Praxis Works", sub: done ? "Replay anytime" : "Start here", hint: "Tap → timer → lock a move → do it.", dot: "dotGreen", to: "#/onboarding" },
+    { title: "Find Your Next Step", sub: "Fallback router", hint: "Only if you can’t label your state.", dot: "dotGreen", to: "#/green/next" },
+  ];
+
+  return { CORE, PLAN, EXTRAS };
+}
 
 export function renderHome() {
   const wrap = el("div", { class: "homeShell" });
 
-  // session-only toggle
+  // session-only UI state (keeps home clean)
   let showTools = false;
+  let showPlanTools = false;
+  let showExtras = false;
 
   function header() {
     const safetyActive = hasRecentEmergencyFromSession();
     const safetySnoozed = isSnoozedKey(KEY_SAFETY_SNOOZE_UNTIL);
 
     const headerButtons = [];
-
-    // Only show “Show safety” button if they snoozed it.
     if (safetyActive && safetySnoozed) {
       headerButtons.push(
         el("button", {
           class: "btn",
           type: "button",
-          onClick: () => { clearKey(KEY_SAFETY_SNOOZE_UNTIL); rerenderHomeIfActive() || (location.hash = "#/home"); }
+          onClick: () => { clearKey(KEY_SAFETY_SNOOZE_UNTIL); rerender(); }
         }, ["Show safety"])
       );
     }
 
     return el("div", { class: "homeHeader" }, [
       el("h1", { class: "h1" }, ["Reset"]),
-      el("p", { class: "p" }, ["Start with your state. Praxis routes you."]),
+      el("p", { class: "p" }, ["Start with your state. One tap."]),
       el("div", { class: "small" }, [`Home ${BUILD_HOME}`]),
       headerButtons.length ? el("div", { class: "btnRow", style: "margin-top:10px" }, headerButtons) : null,
     ].filter(Boolean));
   }
 
-  function feelingCard() {
+  function startCard() {
     return el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["How are you feeling?"]),
-      el("p", { class: "small" }, ["One tap. No thinking."]),
-      el("div", { class: "flowShell", style: "margin-top:10px" }, FEELING_OPTIONS.map(o => feelingTile(o))),
+      el("div", { class: "badge" }, ["Start"]),
+      el("h2", { class: "h2" }, ["How are you feeling right now?"]),
+      el("p", { class: "small" }, ["Pick the closest match. Praxis routes you."]),
+      el("div", { class: "flowShell", style: "margin-top:10px" }, FEELING_OPTIONS.map(feelingTile)),
     ]);
   }
 
-  function toolsToggleCard() {
+  function controlsCard() {
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "btnRow" }, [
         el("button", {
           class: "btn",
           type: "button",
-          onClick: () => { showTools = !showTools; rerender(); }
+          onClick: () => {
+            showTools = !showTools;
+            // when opening tools, default to ONLY core
+            if (showTools) { showPlanTools = false; showExtras = false; }
+            rerender();
+          }
         }, [showTools ? "Hide tools" : "Show tools"]),
       ]),
-      el("p", { class: "small", style: "margin-top:8px" }, ["Tools are optional. Default is simple."]),
+      el("p", { class: "small", style: "margin-top:8px" }, ["Tools should not overwhelm you. Core first."]),
     ]);
   }
 
   function toolsSection() {
-    const tiles = getTiles();
+    const { CORE, PLAN, EXTRAS } = toolsModel();
+
     return el("div", {}, [
       el("div", { class: "card cardPad" }, [
-        el("div", { class: "badge" }, ["All tools"]),
-        el("p", { class: "small" }, ["Use these if you already know what you need."]),
+        el("div", { class: "badge" }, ["Tools"]),
+        el("p", { class: "small" }, ["Core tools first. Add more only if needed."]),
+        el("div", { class: "flowShell", style: "margin-top:10px" }, CORE.map(toolRow)),
+
+        el("div", { class: "btnRow", style: "margin-top:12px" }, [
+          el("button", {
+            class: "btn",
+            type: "button",
+            onClick: () => { showPlanTools = !showPlanTools; rerender(); }
+          }, [showPlanTools ? "Hide planning tools" : "Show planning tools"]),
+          el("button", {
+            class: "btn",
+            type: "button",
+            onClick: () => { showExtras = !showExtras; rerender(); }
+          }, [showExtras ? "Hide extras" : "Show extras"]),
+        ]),
       ]),
-      el("div", { class: "homeGrid" }, tiles.map(tileButton)),
-    ]);
+
+      showPlanTools ? el("div", { class: "card cardPad" }, [
+        el("div", { class: "badge" }, ["Planning tools"]),
+        el("p", { class: "small" }, ["Use when you’re stable enough to choose a direction."]),
+        el("div", { class: "flowShell", style: "margin-top:10px" }, PLAN.map(toolRow)),
+      ]) : null,
+
+      showExtras ? el("div", { class: "card cardPad" }, [
+        el("div", { class: "badge" }, ["Extras"]),
+        el("p", { class: "small" }, ["Useful, but not needed most sessions."]),
+        el("div", { class: "flowShell", style: "margin-top:10px" }, EXTRAS.map(toolRow)),
+      ]) : null,
+    ].filter(Boolean));
   }
 
   function rerender() {
     wrap.innerHTML = "";
     wrap.appendChild(header());
 
-    // Safety card can auto-show, otherwise keep landing clean.
-    const safety = suggestionCardSafetyOnly();
+    const safety = suggestionCard();
     if (safety) wrap.appendChild(safety);
 
-    wrap.appendChild(feelingCard());
-    wrap.appendChild(toolsToggleCard());
+    wrap.appendChild(startCard());
+    wrap.appendChild(controlsCard());
+
     if (showTools) wrap.appendChild(toolsSection());
   }
 
