@@ -1,7 +1,7 @@
 // js/ui.js  (FULL REPLACEMENT)
 import { readLog } from "./storage.js";
 
-const BUILD_HOME = "UI-HOME-4";
+const BUILD_HOME = "UI-START-1";
 
 const KEY_DONE = "praxis_onboarding_done";
 const KEY_SNOOZE_UNTIL = "praxis_suggest_snooze_until";
@@ -107,6 +107,7 @@ function computeSuggestion() {
   const safetyActive = hasRecentEmergencyFromSession() || hasRecentEmergencyFromLog(log);
   const safetySnoozed = isSnoozedKey(KEY_SAFETY_SNOOZE_UNTIL);
 
+  // Safety override
   if (safetyActive && !safetySnoozed) {
     return {
       type: "safety",
@@ -290,7 +291,7 @@ function feelingTile({ label, hint, go, goDot }) {
   return el("button", {
     class: "actionTile",
     type: "button",
-    onClick: () => (location.hash = go),
+    onClick: () => { location.hash = go; },
   }, [
     el("div", { class: "tileTop" }, [
       el("div", {}, [
@@ -303,7 +304,8 @@ function feelingTile({ label, hint, go, goDot }) {
   ]);
 }
 
-const FEELING_OPTIONS = [
+// Emotion → process routing (your “automatic starting place”)
+const START_OPTIONS = [
   { label: "Overwhelmed / unsafe", hint: "Get real help now.", go: "#/red/emergency", goDot: "dotRed" },
   { label: "Anxious / urge-driven", hint: "Lower intensity first.", go: "#/yellow/calm", goDot: "dotYellow" },
   { label: "Urge to act / message / react", hint: "Pause before acting.", go: "#/yellow/stop", goDot: "dotYellow" },
@@ -337,28 +339,19 @@ export function renderHome() {
           class: "btn",
           type: "button",
           onClick: () => { clearKey(KEY_SNOOZE_UNTIL); rerender(); }
-        }, ["Show suggestions"])
+        }, ["Show guidance"])
       );
     }
 
     return el("div", { class: "homeHeader" }, [
-      el("h1", { class: "h1" }, ["Reset"]),
-      el("p", { class: "p" }, ["Start with your state. Praxis routes you."]),
+      el("h1", { class: "h1" }, ["Start here"]),
+      el("p", { class: "p" }, ["Pick your current state. Praxis routes you into the process."]),
       el("div", { class: "small" }, [`Home ${BUILD_HOME}`]),
       headerButtons.length ? el("div", { class: "btnRow", style: "margin-top:10px" }, headerButtons) : null,
     ].filter(Boolean));
   }
 
-  function startCard() {
-    return el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["Start here"]),
-      el("h2", { class: "h2" }, ["How are you feeling right now?"]),
-      el("p", { class: "small" }, ["One tap. No thinking."]),
-      el("div", { class: "flowShell", style: "margin-top:10px" }, FEELING_OPTIONS.map(o => feelingTile(o))),
-    ]);
-  }
-
-  function suggestionCard() {
+  function guidanceCard() {
     const s = computeSuggestion();
     if (!s) return null;
 
@@ -366,7 +359,7 @@ export function renderHome() {
     const hideLabel = "Hide (2h)";
 
     return el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, [s.badge || "Suggestion"]),
+      el("div", { class: "badge" }, [s.badge || "Guidance"]),
       el("h2", { class: "h2" }, [s.title]),
       el("p", { class: "p" }, [s.text]),
       el("div", { class: "btnRow" }, [
@@ -381,34 +374,17 @@ export function renderHome() {
     ]);
   }
 
-  function coreToolsCard() {
-    const core = [
-      { title: "Calm Me Down", sub: "Drop intensity fast", dot: "dotYellow", to: "#/yellow/calm" },
-      { title: "Stop the Urge", sub: "Pause before acting", dot: "dotYellow", to: "#/yellow/stop" },
-      { title: "Move Forward", sub: "Body → progress", dot: "dotGreen", to: "#/green/move" },
-      { title: "Today’s Direction", sub: "Pick a lane", dot: "dotGreen", to: "#/green/direction" },
-      { title: "Today’s Plan", sub: "3 steps only", dot: "dotGreen", to: "#/green/today" },
-    ];
-
+  function startCard() {
     return el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["Core tools"]),
-      el("p", { class: "small" }, ["If you already know what you need, tap one."]),
-      el("div", { class: "homeGrid" }, core.map(t =>
-        el("button", { class: "actionTile", type: "button", onClick: () => (location.hash = t.to) }, [
-          el("div", { class: "tileTop" }, [
-            el("div", {}, [
-              el("div", { class: "tileTitle" }, [t.title]),
-              el("div", { class: "tileSub" }, [t.sub]),
-            ]),
-            el("div", { class: `zoneDot ${t.dot}` }, []),
-          ]),
-          el("p", { class: "tileHint" }, ["Tap"]),
-        ])
-      )),
+      el("div", { class: "badge" }, ["Start"]),
+      el("h2", { class: "h2" }, ["How are you feeling right now?"]),
+      el("p", { class: "small" }, ["One tap. No scrolling. No menus."]),
+      el("div", { class: "flowShell", style: "margin-top:10px" }, START_OPTIONS.map(o => feelingTile(o))),
+      el("p", { class: "small", style: "margin-top:10px" }, ["If you’re not sure, pick “Anxious / urge-driven.”"]),
     ]);
   }
 
-  function moreToolsToggle() {
+  function toolsToggleCard() {
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "btnRow" }, [
         el("button", {
@@ -419,9 +395,9 @@ export function renderHome() {
             setSessionBool(KEY_HOME_MORE_TOOLS, showMoreTools);
             rerender();
           }
-        }, [showMoreTools ? "Hide more tools" : "Show more tools"]),
+        }, [showMoreTools ? "Hide other tools" : "Show other tools"]),
       ]),
-      el("p", { class: "small", style: "margin-top:8px" }, ["Everything else lives here (History, Clarify, Onboarding, etc)."]),
+      el("p", { class: "small", style: "margin-top:8px" }, ["Optional: Clarify, History, Onboarding, etc."]),
     ]);
   }
 
@@ -429,8 +405,8 @@ export function renderHome() {
     const tiles = getTiles();
     return el("div", {}, [
       el("div", { class: "card cardPad" }, [
-        el("div", { class: "badge" }, ["More tools"]),
-        el("p", { class: "small" }, ["Use these after you’re moving, or if you’re exploring."]),
+        el("div", { class: "badge" }, ["Other tools"]),
+        el("p", { class: "small" }, ["Use these when you already know what you want."]),
       ]),
       el("div", { class: "homeGrid" }, tiles.map(tileButton)),
     ]);
@@ -440,20 +416,15 @@ export function renderHome() {
     wrap.innerHTML = "";
     wrap.appendChild(header());
 
-    // Always visible: Start + Guidance (if available) + Core tools
+    // Safety/guidance: show if present (user can hide for 2h)
+    const gc = guidanceCard();
+    if (gc) wrap.appendChild(gc);
+
+    // Main entry: emotion → route
     wrap.appendChild(startCard());
 
-    const s = computeSuggestion();
-    const safetyForced = !!(s && s.type === "safety");
-    const sc = suggestionCard();
-    if (sc && (safetyForced || true)) {
-      // ✅ show suggestion whenever it exists; user can Hide(2h) if they want
-      wrap.appendChild(sc);
-    }
-
-    wrap.appendChild(coreToolsCard());
-    wrap.appendChild(moreToolsToggle());
-
+    // Optional extras
+    wrap.appendChild(toolsToggleCard());
     if (showMoreTools) wrap.appendChild(moreToolsSection());
   }
 
