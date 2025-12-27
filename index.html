@@ -2,29 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Praxis</title>
   <meta name="description" content="Praxis — a self-guided emotional regulation tool." />
 
-  <!-- CSS (cache-busted) -->
-  <script>
-    (function () {
-      const v = Date.now();
-      const styles = [
-        "./styles/base.css",
-        "./styles/components.css",
-        "./styles/home.css",
-        "./styles/flows.css",
-        "./styles/redzone.css"
-      ];
-      styles.forEach(href => {
-        const link = document.createElement("link");
-        link.rel = "stylesheet";
-        link.href = href + "?v=" + v;
-        document.head.appendChild(link);
-      });
-    })();
-  </script>
+  <!-- Styles -->
+  <link rel="stylesheet" href="./styles/base.css">
+  <link rel="stylesheet" href="./styles/components.css">
+  <link rel="stylesheet" href="./styles/home.css">
+  <link rel="stylesheet" href="./styles/flows.css">
+  <link rel="stylesheet" href="./styles/redzone.css">
 </head>
 
 <body>
@@ -34,30 +21,26 @@
         <div class="brandTitle">PRAXIS</div>
         <div class="brandSub">Stabilize → Act → Move forward</div>
       </div>
-
       <nav class="topNav">
         <button class="linkBtn" id="navHome" type="button">Reset</button>
       </nav>
     </header>
 
-    <main id="main" class="main" role="main" aria-live="polite">
-      <!-- JS renders here -->
-    </main>
+    <!-- 🔴 THIS WAS MISSING -->
+    <main id="main" class="main" role="main"></main>
 
     <footer class="footer">
-      <div class="footerNote">
+      <div>
         <strong>© 2025 Joseph Satmary.</strong> All rights reserved.
-        <span style="opacity:.75;margin-left:8px;">Beta — features/design subject to change.</span>
+        <span class="beta">Beta — features and design are subject to change.</span>
       </div>
-      <div class="footerLinks">
+      <div>
         <a href="./legal.html">Legal</a>
       </div>
     </footer>
   </div>
 
-  <!-- JS (cache-busted) -->
-  <script type="module">
-    import(`./js/start.js?v=${Date.now()}`);
-  </script>
+  <!-- App Boot -->
+  <script type="module" src="./js/app.js"></script>
 </body>
 </html>
