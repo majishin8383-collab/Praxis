@@ -1,3 +1,4 @@
+// js/router.js
 import { setMain, renderHome } from "./ui.js";
 
 import { renderCalm } from "./zones/yellow/calm.js";
@@ -13,31 +14,35 @@ import { renderReflect } from "./zones/reflect.js";
 import { renderHistory } from "./history.js";
 import { renderOnboarding } from "./onboarding.js";
 
-const routes = new Map([
-  ["#/home", renderHome],
+const routes = {
+  "#/home": renderHome,
 
-  ["#/yellow/calm", renderCalm],
-  ["#/yellow/stop", renderStopUrge],
-  ["#/red/emergency", renderEmergency],
+  "#/yellow/calm": renderCalm,
+  "#/yellow/stop": renderStopUrge,
+  "#/red/emergency": renderEmergency,
 
-  ["#/green/move", renderMoveForward],
-  ["#/green/direction", renderDirection],
-  ["#/green/next", renderNextStep],
-  ["#/green/today", renderTodayPlan],
+  "#/green/move": renderMoveForward,
+  "#/green/direction": renderDirection,
+  "#/green/next": renderNextStep,
+  "#/green/today": renderTodayPlan,
 
-  ["#/reflect", renderReflect],
-  ["#/history", renderHistory],
-  ["#/onboarding", renderOnboarding],
-]);
-
-function getView() {
-  const hash = location.hash || "#/home";
-  return routes.get(hash) || renderHome;
-}
+  "#/reflect": renderReflect,
+  "#/history": renderHistory,
+  "#/onboarding": renderOnboarding,
+};
 
 function renderRoute() {
-  const view = getView()();
-  setMain(view);
+  const hash = location.hash || "#/home";
+  const viewFn = routes[hash] || renderHome;
+
+  try {
+    const view = viewFn();
+    setMain(view);
+  } catch (err) {
+    console.error("Router render failed:", err);
+    setMain(renderHome()); // 🔒 hard fallback
+  }
+
   window.scrollTo(0, 0);
 }
 
@@ -50,5 +55,5 @@ export function initRouter() {
   if (!location.hash) location.hash = "#/home";
 
   window.addEventListener("hashchange", renderRoute);
-  renderRoute(); // 🔴 REQUIRED
+  renderRoute(); // 🔴 THIS WAS THE FAILURE POINT BEFORE
 }
