@@ -4,13 +4,6 @@
  * Public demo does not grant a license to use, copy, modify, or distribute.
  */
 
-import { initRouter } from "./router.js";
-
-function boot() {
-  initRouter();
-}
-
-boot();
 import { setMain, renderHome } from "./ui.js";
 
 import { renderCalm } from "./zones/yellow/calm.js";
@@ -29,7 +22,7 @@ import { renderReflect } from "./zones/reflect.js";
 import { renderHistory } from "./history.js";
 import { renderOnboarding } from "./onboarding.js";
 
-import { renderStart } from "./start.js"; // ✅ NEW
+import { renderStart } from "./start.js";
 
 const KEY_DONE = "praxis_onboarding_done";
 
@@ -42,10 +35,10 @@ function onboardingDone() {
 }
 
 const routes = new Map([
-  // ✅ Start intake
+  // Start intake
   ["#/start", () => renderStart()],
 
-  // ✅ Reset hub (your tile grid)
+  // Reset hub (tile grid)
   ["#/home", () => renderHome()],
 
   ["#/yellow/calm", () => renderCalm()],
@@ -72,17 +65,18 @@ function getRoute() {
 }
 
 function onRouteChange() {
-  const view = getRoute()();
+  const routeFn = getRoute();
+  const view = routeFn ? routeFn() : document.createElement("div");
   setMain(view);
   window.scrollTo(0, 0);
 }
 
 export function initRouter() {
-  // Top nav "Reset" button always goes to hub
+  // Top nav "Home" button always goes to hub
   const homeBtn = document.getElementById("navHome");
   homeBtn?.addEventListener("click", () => (location.hash = "#/home"));
 
-  // ✅ Default landing
+  // Default landing
   if (!location.hash) {
     location.hash = onboardingDone() ? "#/home" : "#/start";
   }
