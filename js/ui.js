@@ -1,9 +1,10 @@
 // js/ui.js  (FULL REPLACEMENT)
 import { readLog } from "./storage.js";
 
-const BUILD_HOME = "UI-HOME-5";
+const BUILD_HOME = "UI-HOME-3";
 
 const KEY_DONE = "praxis_onboarding_done";
+const KEY_SNOOZE_UNTIL = "praxis_suggest_snooze_until";
 const KEY_SAFETY_SNOOZE_UNTIL = "praxis_safety_snooze_until";
 const KEY_LAST_EMERGENCY = "praxis_last_emergency_ts";
 
@@ -62,12 +63,40 @@ function getLastEmergencyMs() {
     return 0;
   }
 }
+
+function startOfTodayMs() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
 function minutesAgo(iso) {
   if (!iso) return Infinity;
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return Infinity;
   return (Date.now() - t) / (60 * 1000);
 }
+
+function routeForClarifyMove(moveId) {
+  const map = {
+    pause24: "#/home",
+    calm: "#/yellow/calm",
+    shield: "#/yellow/stop",
+    move: "#/green/move",
+    direction: "#/green/direction",
+  };
+  return map[moveId] || "#/home";
+}
+
+function rerenderHomeIfActive() {
+  if ((location.hash || "#/home").startsWith("#/home")) {
+    setMain(renderHome());
+    window.scrollTo(0, 0);
+    return true;
+  }
+  return false;
+}
+
 function hasRecentEmergencyFromSession() {
   const lastEm = getLastEmergencyMs();
   return !!(lastEm && (Date.now() - lastEm) <= 60 * 60 * 1000);
@@ -77,15 +106,17 @@ function hasRecentEmergencyFromLog(log) {
   return !!(lastEmergency && minutesAgo(lastEmergency.when) <= 60);
 }
 
-function computeSafetySuggestion() {
+function computeSuggestion() {
   let log = [];
   try { log = readLog().slice(0, 120); } catch { log = []; }
 
   const safetyActive = hasRecentEmergencyFromSession() || hasRecentEmergencyFromLog(log);
   const safetySnoozed = isSnoozedKey(KEY_SAFETY_SNOOZE_UNTIL);
 
+  // Safety (can be hidden for 2h)
   if (safetyActive && !safetySnoozed) {
     return {
+      type: "safety",
       badge: "Safety",
       title: "Stabilize first",
       text: "If safety is still at risk, use Emergency now. If you’re safe enough, do Calm for 2 minutes.",
@@ -93,15 +124,115 @@ function computeSafetySuggestion() {
       secondary: { label: "Emergency", to: "#/red/emergency" },
     };
   }
-  return null;
+
+  // Normal suggestions respect normal snooze
+  if (isSnoozedKey(KEY_SNOOZE_UNTIL)) return null;
+
+  if (!log.length) {
+    return {
+      type: "normal",
+      badge: "Quick Start",
+      title: "Start with Calm",
+      text: "If you’re unsure, don’t think—reduce intensity first.",
+      primary: { label: "Calm Me Down", to: "#/yellow/calm" },
+      secondary: { label: "How it works", to: "#/onboarding" },
+    };
+  }
+
+  const todayCutoff = startOfTodayMs();
+  const today = log.filter(e => e.when && new Date(e.when).getTime() >= todayCutoff);
+  const last = log[0];
+
+  const lastClarify = log.find(e => e.kind === "clarify" && e.statement);
+  if (lastClarify && minutesAgo(lastClarify.when) <= 360) {
+    const to = routeForClarifyMove(lastClarify.move);
+    return {
+      type: "normal",
+      badge: "Lock → Do",
+      title: "Do the move you locked",
+      text: lastClarify.statement,
+      primary: { label: "Do it now", to },
+      secondary: { label: "Run Clarify", to: "#/reflect" },
+    };
+  }
+
+  const recentUrge = log.filter(e => e.kind === "stop_urge" && minutesAgo(e.when) <= 120);
+  const lastUrge = recentUrge[0];
+  const stillPresentCount = recentUrge.filter(e => e.outcome === "still_present").length;
+  if (lastUrge && (lastUrge.outcome === "still_present" || stillPresentCount >= 2)) {
+    return {
+      type: "normal",
+      badge: "Loop detected",
+      title: "Shift the state, then decide",
+      text: "Run Calm for 2 minutes, then re-run Stop the Urge. Don’t improvise.",
+      primary: { label: "Calm Me Down", to: "#/yellow/calm" },
+      secondary: { label: "Stop the Urge", to: "#/yellow/stop" },
+    };
+  }
+
+  const calmToday = today.filter(e => e.kind === "calm").length;
+  if (calmToday >= 2) {
+    return {
+      type: "normal",
+      badge: "Next phase",
+      title: "Convert calm into progress",
+      text: "You’ve stabilized. Now use movement to break the loop.",
+      primary: { label: "Move Forward", to: "#/green/move" },
+      secondary: { label: "Today’s Plan", to: "#/green/today" },
+    };
+  }
+
+  if (today.length === 0) {
+    return {
+      type: "normal",
+      badge: "Start here",
+      title: "Pick today’s lane",
+      text: "Choose a direction so your brain stops bargaining.",
+      primary: { label: "Today’s Direction", to: "#/green/direction" },
+      secondary: { label: "Today’s Plan", to: "#/green/today" },
+    };
+  }
+
+  if (last.kind === "direction") {
+    return {
+      type: "normal",
+      badge: "Next step",
+      title: "Turn direction into a plan",
+      text: "Do Step 1 only.",
+      primary: { label: "Today’s Plan", to: "#/green/today" },
+      secondary: { label: "Move Forward", to: "#/green/move" },
+    };
+  }
+
+  if (last.kind === "move_forward") {
+    return {
+      type: "normal",
+      badge: "Lock it",
+      title: "Clarify the next move",
+      text: "Lock one move so you don’t drift back into thinking.",
+      primary: { label: "Clarify", to: "#/reflect" },
+      secondary: { label: "History", to: "#/history" },
+    };
+  }
+
+  return {
+    type: "normal",
+    badge: "Suggestion",
+    title: "Move forward",
+    text: "If you’re not sure, start with the body.",
+    primary: { label: "Move Forward", to: "#/green/move" },
+    secondary: { label: "Calm Me Down", to: "#/yellow/calm" },
+  };
 }
 
 function suggestionCard() {
-  const s = computeSafetySuggestion();
+  const s = computeSuggestion();
   if (!s) return null;
 
+  const hideKey = s.type === "safety" ? KEY_SAFETY_SNOOZE_UNTIL : KEY_SNOOZE_UNTIL;
+
   return el("div", { class: "card cardPad" }, [
-    el("div", { class: "badge" }, [s.badge]),
+    el("div", { class: "badge" }, [s.badge || "Suggestion"]),
     el("h2", { class: "h2" }, [s.title]),
     el("p", { class: "p" }, [s.text]),
     el("div", { class: "btnRow" }, [
@@ -110,36 +241,13 @@ function suggestionCard() {
       el("button", {
         class: "btn",
         type: "button",
-        onClick: () => { snoozeKey(KEY_SAFETY_SNOOZE_UNTIL, 2); location.hash = "#/home"; }
+        onClick: () => { snoozeKey(hideKey, 2); rerenderHomeIfActive() || (location.hash = "#/home"); }
       }, ["Hide (2h)"]),
     ])
   ]);
 }
 
-function toolRow({ title, sub, hint, dot, to }) {
-  return el(
-    "button",
-    { class: "actionTile", type: "button", onClick: () => (location.hash = to) },
-    [
-      el("div", { class: "tileTop" }, [
-        el("div", {}, [
-          el("div", { class: "tileTitle" }, [title]),
-          el("div", { class: "tileSub" }, [sub]),
-        ]),
-        el("div", { class: `zoneDot ${dot}` }, []),
-      ]),
-      hint ? el("p", { class: "tileHint" }, [hint]) : null,
-    ].filter(Boolean)
-  );
-}
-
-const FEELING_OPTIONS = [
-  { label: "Overwhelmed / unsafe", hint: "Get real help now.", go: "#/red/emergency", goDot: "dotRed" },
-  { label: "Anxious / urge-driven", hint: "Lower intensity first.", go: "#/yellow/calm", goDot: "dotYellow" },
-  { label: "Urge to act / message / react", hint: "Pause before acting.", go: "#/yellow/stop", goDot: "dotYellow" },
-  { label: "Stuck / frozen", hint: "Body first. Then progress.", go: "#/green/move", goDot: "dotGreen" },
-  { label: "I’m okay — I need direction", hint: "Auto-build today’s plan.", go: "#/green/direction", goDot: "dotGreen" },
-];
+// ---------- HOME START (state-first) ----------
 
 function feelingTile({ label, hint, go, goDot }) {
   return el("button", {
@@ -158,50 +266,97 @@ function feelingTile({ label, hint, go, goDot }) {
   ]);
 }
 
-function toolsModel() {
-  const done = onboardingDone();
+const FEELING_OPTIONS = [
+  { label: "I’m not safe / at risk", hint: "Get real help now.", go: "#/red/emergency", goDot: "dotRed" },
+  { label: "Anxious / overwhelmed", hint: "Lower intensity first.", go: "#/yellow/calm", goDot: "dotYellow" },
+  { label: "Urge to act / react / message", hint: "Pause before acting.", go: "#/yellow/stop", goDot: "dotYellow" },
+  { label: "Stuck / frozen / restless", hint: "Body first. Then progress.", go: "#/green/move", goDot: "dotGreen" },
+  { label: "I’m okay — I need direction", hint: "Pick a lane for today.", go: "#/green/direction", goDot: "dotGreen" },
+];
 
-  const CORE = [
-    { title: "Calm Me Down", sub: "Drop intensity fast", hint: "2 minutes. Guided.", dot: "dotYellow", to: "#/yellow/calm" },
-    { title: "Stop the Urge", sub: "Pause before acting", hint: "Buy time. Add friction.", dot: "dotYellow", to: "#/yellow/stop" },
-    { title: "Move Forward", sub: "Body first. Then progress.", hint: "Pick a ladder. Stop when timer ends.", dot: "dotGreen", to: "#/green/move" },
-    { title: "Emergency", sub: "Immediate support", hint: "Use when safety is at risk.", dot: "dotRed", to: "#/red/emergency" },
-  ];
+// ---------- TOOLS (clean + grouped) ----------
 
-  const PLAN = [
-    { title: "Choose Today’s Direction", sub: "Auto-build Today’s Plan", hint: "One tap → plan → Step 1.", dot: "dotGreen", to: "#/green/direction" },
-    { title: "Edit Today’s Plan", sub: "Three steps only", hint: "Use if you want to customize.", dot: "dotGreen", to: "#/green/today" },
-    { title: "Clarify the Next Move", sub: "Lock one action", hint: "Tap quickly. End with one move.", dot: "dotGreen", to: "#/reflect" },
-  ];
+function toolRow(title, desc, to, dot = "dotGreen") {
+  return el("button", {
+    class: "actionTile",
+    type: "button",
+    onClick: () => (location.hash = to),
+  }, [
+    el("div", { class: "tileTop" }, [
+      el("div", {}, [
+        el("div", { class: "tileTitle" }, [title]),
+        el("div", { class: "tileSub" }, [desc]),
+      ]),
+      el("div", { class: `zoneDot ${dot}` }, []),
+    ]),
+    el("p", { class: "tileHint" }, ["Open"]),
+  ]);
+}
 
-  const EXTRAS = [
-    { title: "History", sub: "See momentum", hint: "Recent sessions + summary.", dot: "dotGreen", to: "#/history" },
-    { title: done ? "Quick Start (replay)" : "How Praxis Works", sub: done ? "Replay anytime" : "Start here", hint: "Tap → timer → lock a move → do it.", dot: "dotGreen", to: "#/onboarding" },
-    { title: "Find Your Next Step", sub: "Fallback router", hint: "Only if you can’t label your state.", dot: "dotGreen", to: "#/green/next" },
-  ];
+function section(title, subtitle, isOpen, onToggle, children) {
+  return el("div", { class: "card cardPad" }, [
+    el("div", { class: "tileTop", style: "align-items:flex-start;" }, [
+      el("div", {}, [
+        el("h2", { class: "h2" }, [title]),
+        el("p", { class: "small" }, [subtitle]),
+      ]),
+      el("button", {
+        class: "btn",
+        type: "button",
+        onClick: onToggle
+      }, [isOpen ? "Hide" : "Show"])
+    ]),
+    isOpen ? el("div", { class: "flowShell", style: "margin-top:10px" }, children) : null
+  ].filter(Boolean));
+}
 
-  return { CORE, PLAN, EXTRAS };
+function quickLinkRow(items) {
+  return el("div", { class: "btnRow" }, items.map(b =>
+    el("button", { class: b.primary ? "btn btnPrimary" : "btn", type: "button", onClick: () => (location.hash = b.to) }, [b.label])
+  ));
+}
+
+function onboardingTile(done) {
+  return done
+    ? toolRow("Quick Start (replay)", "Replay the flow anytime.", "#/onboarding", "dotGreen")
+    : toolRow("How Praxis Works", "Fast onboarding.", "#/onboarding", "dotGreen");
 }
 
 export function renderHome() {
   const wrap = el("div", { class: "homeShell" });
 
+  // session-only UI state
   let showTools = false;
-  let showPlanTools = false;
-  let showExtras = false;
+  let showGuidance = false;
+
+  // section state (only relevant when showTools = true)
+  let openCore = true;     // core is on by default
+  let openPlanning = false;
+  let openReflect = false;
+  let openExtras = false;
 
   function header() {
+    const normalSnoozed = isSnoozedKey(KEY_SNOOZE_UNTIL);
     const safetyActive = hasRecentEmergencyFromSession();
     const safetySnoozed = isSnoozedKey(KEY_SAFETY_SNOOZE_UNTIL);
 
     const headerButtons = [];
+
     if (safetyActive && safetySnoozed) {
       headerButtons.push(
         el("button", {
           class: "btn",
           type: "button",
-          onClick: () => { clearKey(KEY_SAFETY_SNOOZE_UNTIL); rerender(); }
+          onClick: () => { clearKey(KEY_SAFETY_SNOOZE_UNTIL); rerenderHomeIfActive() || (location.hash = "#/home"); }
         }, ["Show safety"])
+      );
+    } else if (normalSnoozed) {
+      headerButtons.push(
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => { clearKey(KEY_SNOOZE_UNTIL); rerenderHomeIfActive() || (location.hash = "#/home"); }
+        }, ["Show guidance"])
       );
     }
 
@@ -215,10 +370,10 @@ export function renderHome() {
 
   function startCard() {
     return el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["Start"]),
+      el("div", { class: "badge" }, ["Start here"]),
       el("h2", { class: "h2" }, ["How are you feeling right now?"]),
-      el("p", { class: "small" }, ["Pick the closest match. Praxis routes you."]),
-      el("div", { class: "flowShell", style: "margin-top:10px" }, FEELING_OPTIONS.map(feelingTile)),
+      el("p", { class: "small" }, ["One tap. No negotiating."]),
+      el("div", { class: "flowShell", style: "margin-top:10px" }, FEELING_OPTIONS.map(o => feelingTile(o))),
     ]);
   }
 
@@ -228,64 +383,112 @@ export function renderHome() {
         el("button", {
           class: "btn",
           type: "button",
-          onClick: () => {
-            showTools = !showTools;
-            if (showTools) { showPlanTools = false; showExtras = false; }
-            rerender();
-          }
+          onClick: () => { showGuidance = !showGuidance; rerender(); }
+        }, [showGuidance ? "Hide guidance" : "Show guidance"]),
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => { showTools = !showTools; rerender(); }
         }, [showTools ? "Hide tools" : "Show tools"]),
       ]),
-      el("p", { class: "small", style: "margin-top:8px" }, ["Core first. Expand only if needed."]),
+      el("p", { class: "small", style: "margin-top:8px" }, ["Default is simple. Guidance/tools are optional."]),
     ]);
   }
 
-  function toolsSection() {
-    const { CORE, PLAN, EXTRAS } = toolsModel();
+  function toolsPanel() {
+    const done = onboardingDone();
+
+    const core = [
+      toolRow("Calm Me Down", "Drop intensity fast (2 min).", "#/yellow/calm", "dotYellow"),
+      toolRow("Stop the Urge", "Pause before acting.", "#/yellow/stop", "dotYellow"),
+      toolRow("Move Forward", "Body first. Then progress.", "#/green/move", "dotGreen"),
+      toolRow("Clarify the Next Move", "Lock one move. Stop spiraling.", "#/reflect", "dotGreen"),
+    ];
+
+    const planning = [
+      toolRow("Choose Today’s Direction", "Pick a lane for today.", "#/green/direction", "dotGreen"),
+      toolRow("Today’s Plan", "Three steps only.", "#/green/today", "dotGreen"),
+    ];
+
+    const reflect = [
+      toolRow("History", "See momentum + recent sessions.", "#/history", "dotGreen"),
+      onboardingTile(done),
+    ];
+
+    // Extras are intentionally “tucked away” to reduce redundancy/noise
+    const extras = [
+      toolRow("Find Your Next Step", "If you can’t pick, this routes you.", "#/green/next", "dotGreen"),
+      toolRow("Emergency", "Immediate support resources.", "#/red/emergency", "dotRed"),
+      // Keep focus sprint internal/optional; still accessible by URL, not a home priority.
+      // toolRow("Focus Sprint", "Internal tool (optional).", "#/green/focus", "dotGreen"),
+    ];
 
     return el("div", {}, [
       el("div", { class: "card cardPad" }, [
         el("div", { class: "badge" }, ["Tools"]),
-        el("p", { class: "small" }, ["Core tools first. Add more only if needed."]),
-        el("div", { class: "flowShell", style: "margin-top:10px" }, CORE.map(toolRow)),
-        el("div", { class: "btnRow", style: "margin-top:12px" }, [
-          el("button", {
-            class: "btn",
-            type: "button",
-            onClick: () => { showPlanTools = !showPlanTools; rerender(); }
-          }, [showPlanTools ? "Hide planning tools" : "Show planning tools"]),
-          el("button", {
-            class: "btn",
-            type: "button",
-            onClick: () => { showExtras = !showExtras; rerender(); }
-          }, [showExtras ? "Hide extras" : "Show extras"]),
+        el("p", { class: "small" }, ["Grouped to avoid the wall-of-tiles problem."]),
+        quickLinkRow([
+          { label: "Core", to: "#/home", primary: true },
+          { label: "Planning", to: "#/home" },
+          { label: "Review", to: "#/home" },
+          { label: "Extras", to: "#/home" },
         ]),
       ]),
 
-      showPlanTools ? el("div", { class: "card cardPad" }, [
-        el("div", { class: "badge" }, ["Planning tools"]),
-        el("p", { class: "small" }, ["Use when you’re stable enough to choose a direction."]),
-        el("div", { class: "flowShell", style: "margin-top:10px" }, PLAN.map(toolRow)),
-      ]) : null,
+      section(
+        "Core tools",
+        "The essentials. Most users only need these.",
+        openCore,
+        () => { openCore = !openCore; rerender(); },
+        core
+      ),
 
-      showExtras ? el("div", { class: "card cardPad" }, [
-        el("div", { class: "badge" }, ["Extras"]),
-        el("p", { class: "small" }, ["Useful, but not needed most sessions."]),
-        el("div", { class: "flowShell", style: "margin-top:10px" }, EXTRAS.map(toolRow)),
-      ]) : null,
-    ].filter(Boolean));
+      section(
+        "Planning tools",
+        "Use when you’re stable enough to aim the day.",
+        openPlanning,
+        () => { openPlanning = !openPlanning; rerender(); },
+        planning
+      ),
+
+      section(
+        "Reflect & review",
+        "Lock your next move and track momentum.",
+        openReflect,
+        () => { openReflect = !openReflect; rerender(); },
+        reflect
+      ),
+
+      section(
+        "Extras",
+        "Use only if you’re stuck choosing or want a replay.",
+        openExtras,
+        () => { openExtras = !openExtras; rerender(); },
+        extras
+      ),
+    ]);
   }
 
   function rerender() {
     wrap.innerHTML = "";
     wrap.appendChild(header());
-
-    const safety = suggestionCard();
-    if (safety) wrap.appendChild(safety);
-
     wrap.appendChild(startCard());
     wrap.appendChild(controlsCard());
 
-    if (showTools) wrap.appendChild(toolsSection());
+    // Guidance behavior:
+    // - Safety guidance always shows if active (unless snoozed via existing controls)
+    // - Normal guidance only shows if user toggles it
+    const s = computeSuggestion();
+    const mustShowSafety = s && s.type === "safety";
+    if (mustShowSafety) {
+      const sc = suggestionCard();
+      if (sc) wrap.appendChild(sc);
+    } else if (showGuidance) {
+      const sc = suggestionCard();
+      if (sc) wrap.appendChild(sc);
+    }
+
+    if (showTools) wrap.appendChild(toolsPanel());
   }
 
   rerender();
