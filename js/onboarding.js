@@ -1,3 +1,16 @@
+/*!
+ * Praxis
+ * © 2025 Joseph Satmary. All rights reserved.
+ * Public demo does not grant a license to use, copy, modify, or distribute.
+ */
+
+import { initRouter } from "./router.js";
+
+function boot() {
+  initRouter();
+}
+
+boot();
 const BUILD = "OB-2";
 const KEY_DONE = "praxis_onboarding_done";
 
