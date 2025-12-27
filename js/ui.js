@@ -1,7 +1,7 @@
 // js/ui.js  (FULL REPLACEMENT)
 import { readLog } from "./storage.js";
 
-const BUILD_HOME = "UI-HOME-3";
+const BUILD_HOME = "UI-HOME-4";
 
 const KEY_DONE = "praxis_onboarding_done";
 const KEY_SNOOZE_UNTIL = "praxis_suggest_snooze_until";
@@ -42,26 +42,20 @@ function getUntil(key) {
     return 0;
   }
 }
-function isSnoozedKey(key) {
-  return Date.now() < getUntil(key);
-}
+function isSnoozedKey(key) { return Date.now() < getUntil(key); }
 function snoozeKey(key, hours = 2) {
   try {
     const until = Date.now() + hours * 60 * 60 * 1000;
     localStorage.setItem(key, String(until));
   } catch {}
 }
-function clearKey(key) {
-  try { localStorage.setItem(key, "0"); } catch {}
-}
+function clearKey(key) { try { localStorage.setItem(key, "0"); } catch {} }
 
 function getLastEmergencyMs() {
   try {
     const v = Number(sessionStorage.getItem(KEY_LAST_EMERGENCY) || "0");
     return Number.isFinite(v) ? v : 0;
-  } catch {
-    return 0;
-  }
+  } catch { return 0; }
 }
 
 function startOfTodayMs() {
@@ -69,7 +63,6 @@ function startOfTodayMs() {
   d.setHours(0, 0, 0, 0);
   return d.getTime();
 }
-
 function minutesAgo(iso) {
   if (!iso) return Infinity;
   const t = new Date(iso).getTime();
@@ -113,7 +106,6 @@ function computeSuggestion() {
   const safetyActive = hasRecentEmergencyFromSession() || hasRecentEmergencyFromLog(log);
   const safetySnoozed = isSnoozedKey(KEY_SAFETY_SNOOZE_UNTIL);
 
-  // Safety (can be hidden for 2h)
   if (safetyActive && !safetySnoozed) {
     return {
       type: "safety",
@@ -125,7 +117,6 @@ function computeSuggestion() {
     };
   }
 
-  // Normal suggestions respect normal snooze
   if (isSnoozedKey(KEY_SNOOZE_UNTIL)) return null;
 
   if (!log.length) {
@@ -247,7 +238,7 @@ function suggestionCard() {
   ]);
 }
 
-// ---------- HOME START (state-first) ----------
+// ---------- HOME START ----------
 
 function feelingTile({ label, hint, go, goDot }) {
   return el("button", {
@@ -274,7 +265,7 @@ const FEELING_OPTIONS = [
   { label: "I’m okay — I need direction", hint: "Pick a lane for today.", go: "#/green/direction", goDot: "dotGreen" },
 ];
 
-// ---------- TOOLS (clean + grouped) ----------
+// ---------- TOOLS (grouped, no fake tabs) ----------
 
 function toolRow(title, desc, to, dot = "dotGreen") {
   return el("button", {
@@ -300,20 +291,10 @@ function section(title, subtitle, isOpen, onToggle, children) {
         el("h2", { class: "h2" }, [title]),
         el("p", { class: "small" }, [subtitle]),
       ]),
-      el("button", {
-        class: "btn",
-        type: "button",
-        onClick: onToggle
-      }, [isOpen ? "Hide" : "Show"])
+      el("button", { class: "btn", type: "button", onClick: onToggle }, [isOpen ? "Hide" : "Show"])
     ]),
     isOpen ? el("div", { class: "flowShell", style: "margin-top:10px" }, children) : null
   ].filter(Boolean));
-}
-
-function quickLinkRow(items) {
-  return el("div", { class: "btnRow" }, items.map(b =>
-    el("button", { class: b.primary ? "btn btnPrimary" : "btn", type: "button", onClick: () => (location.hash = b.to) }, [b.label])
-  ));
 }
 
 function onboardingTile(done) {
@@ -329,8 +310,8 @@ export function renderHome() {
   let showTools = false;
   let showGuidance = false;
 
-  // section state (only relevant when showTools = true)
-  let openCore = true;     // core is on by default
+  // tools sections (only relevant if showTools)
+  let openCore = true;
   let openPlanning = false;
   let openReflect = false;
   let openExtras = false;
@@ -415,57 +396,21 @@ export function renderHome() {
       onboardingTile(done),
     ];
 
-    // Extras are intentionally “tucked away” to reduce redundancy/noise
     const extras = [
       toolRow("Find Your Next Step", "If you can’t pick, this routes you.", "#/green/next", "dotGreen"),
       toolRow("Emergency", "Immediate support resources.", "#/red/emergency", "dotRed"),
-      // Keep focus sprint internal/optional; still accessible by URL, not a home priority.
-      // toolRow("Focus Sprint", "Internal tool (optional).", "#/green/focus", "dotGreen"),
     ];
 
     return el("div", {}, [
       el("div", { class: "card cardPad" }, [
         el("div", { class: "badge" }, ["Tools"]),
         el("p", { class: "small" }, ["Grouped to avoid the wall-of-tiles problem."]),
-        quickLinkRow([
-          { label: "Core", to: "#/home", primary: true },
-          { label: "Planning", to: "#/home" },
-          { label: "Review", to: "#/home" },
-          { label: "Extras", to: "#/home" },
-        ]),
       ]),
 
-      section(
-        "Core tools",
-        "The essentials. Most users only need these.",
-        openCore,
-        () => { openCore = !openCore; rerender(); },
-        core
-      ),
-
-      section(
-        "Planning tools",
-        "Use when you’re stable enough to aim the day.",
-        openPlanning,
-        () => { openPlanning = !openPlanning; rerender(); },
-        planning
-      ),
-
-      section(
-        "Reflect & review",
-        "Lock your next move and track momentum.",
-        openReflect,
-        () => { openReflect = !openReflect; rerender(); },
-        reflect
-      ),
-
-      section(
-        "Extras",
-        "Use only if you’re stuck choosing or want a replay.",
-        openExtras,
-        () => { openExtras = !openExtras; rerender(); },
-        extras
-      ),
+      section("Core tools", "The essentials. Most users only need these.", openCore, () => { openCore = !openCore; rerender(); }, core),
+      section("Planning tools", "Use when you’re stable enough to aim the day.", openPlanning, () => { openPlanning = !openPlanning; rerender(); }, planning),
+      section("Reflect & review", "Lock your next move and track momentum.", openReflect, () => { openReflect = !openReflect; rerender(); }, reflect),
+      section("Extras", "Use only if you’re stuck choosing or want a replay.", openExtras, () => { openExtras = !openExtras; rerender(); }, extras),
     ]);
   }
 
@@ -475,9 +420,6 @@ export function renderHome() {
     wrap.appendChild(startCard());
     wrap.appendChild(controlsCard());
 
-    // Guidance behavior:
-    // - Safety guidance always shows if active (unless snoozed via existing controls)
-    // - Normal guidance only shows if user toggles it
     const s = computeSuggestion();
     const mustShowSafety = s && s.type === "safety";
     if (mustShowSafety) {
