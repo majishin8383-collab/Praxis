@@ -1,8 +1,8 @@
+// js/ui.js  (FULL REPLACEMENT)
 import { readLog } from "./storage.js";
 
-const BUILD_HOME = "HOME-V2-1";
+const BUILD_HOME = "UI-HOME-2";
 
-// Suggestion + onboarding keys (kept)
 const KEY_DONE = "praxis_onboarding_done";
 const KEY_SNOOZE_UNTIL = "praxis_suggest_snooze_until";
 const KEY_SAFETY_SNOOZE_UNTIL = "praxis_safety_snooze_until";
@@ -11,11 +11,9 @@ const KEY_LAST_EMERGENCY = "praxis_last_emergency_ts";
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
-    if (v === null || v === undefined || v === false) continue;
     if (k === "class") node.className = v;
     else if (k === "html") node.innerHTML = v;
     else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
-    else if (v === true) node.setAttribute(k, "");
     else node.setAttribute(k, v);
   }
   for (const child of children) {
@@ -31,10 +29,6 @@ export function setMain(viewNode) {
   main.innerHTML = "";
   if (viewNode) main.appendChild(viewNode);
 }
-
-/* -----------------------------------------
-   Onboarding / snooze helpers
------------------------------------------- */
 
 function onboardingDone() {
   try { return localStorage.getItem(KEY_DONE) === "1"; } catch { return false; }
@@ -112,10 +106,6 @@ function hasRecentEmergencyFromLog(log) {
   return !!(lastEmergency && minutesAgo(lastEmergency.when) <= 60);
 }
 
-/* -----------------------------------------
-   Suggestion engine (kept, but now secondary)
------------------------------------------- */
-
 function computeSuggestion() {
   let log = [];
   try { log = readLog().slice(0, 120); } catch { log = []; }
@@ -123,15 +113,15 @@ function computeSuggestion() {
   const safetyActive = hasRecentEmergencyFromSession() || hasRecentEmergencyFromLog(log);
   const safetySnoozed = isSnoozedKey(KEY_SAFETY_SNOOZE_UNTIL);
 
-  // RULE 0: Safety is highest priority, but can be hidden for 2 hours
+  // Safety (can be hidden for 2h)
   if (safetyActive && !safetySnoozed) {
     return {
       type: "safety",
       badge: "Safety",
       title: "Stabilize first",
       text: "If safety is still at risk, use Emergency now. If you’re safe enough, do Calm for 2 minutes.",
-      primary: { label: "Emergency", to: "#/red/emergency" },
-      secondary: { label: "Calm Me Down", to: "#/yellow/calm" },
+      primary: { label: "Calm Me Down", to: "#/yellow/calm" },
+      secondary: { label: "Emergency", to: "#/red/emergency" },
     };
   }
 
@@ -235,43 +225,15 @@ function computeSuggestion() {
   };
 }
 
-function suggestionCard() {
-  const s = computeSuggestion();
-  if (!s) return null;
-
-  const hideKey = s.type === "safety" ? KEY_SAFETY_SNOOZE_UNTIL : KEY_SNOOZE_UNTIL;
-
-  return el("div", { class: "card cardPad" }, [
-    el("div", { class: "badge" }, [s.badge || "Suggestion"]),
-    el("h2", { class: "h2" }, [s.title]),
-    el("p", { class: "p" }, [s.text]),
-    el("div", { class: "btnRow" }, [
-      el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = s.primary.to) }, [s.primary.label]),
-      el("button", { class: "btn", type: "button", onClick: () => (location.hash = s.secondary.to) }, [s.secondary.label]),
-      el("button", {
-        class: "btn",
-        type: "button",
-        onClick: () => { snoozeKey(hideKey, 2); rerenderHomeIfActive() || (location.hash = "#/home"); }
-      }, ["Hide (2h)"]),
-    ])
-  ]);
-}
-
-/* -----------------------------------------
-   Tiles (kept as “All tools”, not the start)
------------------------------------------- */
-
 function baseTiles() {
   return [
     { title: "Calm Me Down", sub: "Drop intensity fast", hint: "2 minutes. Guided.", dot: "dotYellow", to: "#/yellow/calm" },
     { title: "Stop the Urge", sub: "Pause before acting", hint: "Buy time. Add friction.", dot: "dotYellow", to: "#/yellow/stop" },
     { title: "Emergency", sub: "Immediate support", hint: "Use when safety is at risk.", dot: "dotRed", to: "#/red/emergency" },
-
     { title: "Move Forward", sub: "Body first. Then progress.", hint: "Pick a ladder. Do it until the timer ends.", dot: "dotGreen", to: "#/green/move" },
-    { title: "Choose Today’s Direction", sub: "Pick a lane for today", hint: "Stability / Maintenance / Progress / Recovery.", dot: "dotGreen", to: "#/green/direction" },
-    { title: "Today’s Plan", sub: "Three steps only", hint: "Pick a template, then do Step 1.", dot: "dotGreen", to: "#/green/today" },
-
     { title: "Find Your Next Step", sub: "Tap → go", hint: "Choose what’s closest.", dot: "dotGreen", to: "#/green/next" },
+    { title: "Choose Today’s Direction", sub: "Pick a lane for today", hint: "Stability / Maintenance / Progress / Recovery.", dot: "dotGreen", to: "#/green/direction" },
+    { title: "Today’s Plan", sub: "Three steps only", hint: "Pick a template, then fill 3 moves.", dot: "dotGreen", to: "#/green/today" },
     { title: "Clarify the Next Move", sub: "Lock a move", hint: "Tap quickly. End with one action.", dot: "dotGreen", to: "#/reflect" },
     { title: "History", sub: "See your momentum", hint: "Recent sessions + summary.", dot: "dotGreen", to: "#/history" },
   ];
@@ -279,9 +241,9 @@ function baseTiles() {
 
 function onboardingTile(done) {
   return {
-    title: done ? "How Praxis Works (replay)" : "How Praxis Works",
-    sub: done ? "Replay anytime" : "Start here (1 minute)",
-    hint: "State → action → log → next move.",
+    title: done ? "Quick Start (replay)" : "How Praxis Works",
+    sub: done ? "Replay anytime" : "Start here",
+    hint: "Tap → timer → lock a move → do it.",
     dot: "dotGreen",
     to: "#/onboarding",
   };
@@ -292,10 +254,8 @@ function getTiles() {
   const tiles = baseTiles();
   const onboard = onboardingTile(done);
 
-  // If not done, keep onboarding visible near the top of tools list
   if (!done) return [onboard, ...tiles];
 
-  // If done, put onboarding near the bottom (before History)
   const historyIndex = tiles.findIndex(t => t.to === "#/history");
   if (historyIndex >= 0) tiles.splice(historyIndex, 0, onboard);
   else tiles.push(onboard);
@@ -319,90 +279,151 @@ function tileButton(t) {
   );
 }
 
-/* -----------------------------------------
-   HOME V2 (guided entry)
------------------------------------------- */
+function suggestionCard() {
+  const s = computeSuggestion();
+  if (!s) return null;
 
-function feelingButton(label, hint, to, dot = "dotGreen") {
+  const hideKey = s.type === "safety" ? KEY_SAFETY_SNOOZE_UNTIL : KEY_SNOOZE_UNTIL;
+  const hideLabel = "Hide (2h)";
+
+  return el("div", { class: "card cardPad" }, [
+    el("div", { class: "badge" }, [s.badge || "Suggestion"]),
+    el("h2", { class: "h2" }, [s.title]),
+    el("p", { class: "p" }, [s.text]),
+    el("div", { class: "btnRow" }, [
+      el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = s.primary.to) }, [s.primary.label]),
+      el("button", { class: "btn", type: "button", onClick: () => (location.hash = s.secondary.to) }, [s.secondary.label]),
+      el("button", {
+        class: "btn",
+        type: "button",
+        onClick: () => { snoozeKey(hideKey, 2); rerenderHomeIfActive() || (location.hash = "#/home"); }
+      }, [hideLabel]),
+    ])
+  ]);
+}
+
+function feelingTile({ label, hint, go, goDot }) {
   return el("button", {
     class: "actionTile",
     type: "button",
-    onClick: () => (location.hash = to),
+    onClick: () => (location.hash = go),
   }, [
     el("div", { class: "tileTop" }, [
       el("div", {}, [
         el("div", { class: "tileTitle" }, [label]),
         el("div", { class: "tileSub" }, [hint]),
       ]),
-      el("div", { class: `zoneDot ${dot}` }, []),
+      el("div", { class: `zoneDot ${goDot}` }, []),
     ]),
     el("p", { class: "tileHint" }, ["Tap"]),
   ]);
 }
 
+const FEELING_OPTIONS = [
+  { label: "Overwhelmed / unsafe", hint: "Get real help now.", go: "#/red/emergency", goDot: "dotRed" },
+  { label: "Anxious / urge-driven", hint: "Lower intensity first.", go: "#/yellow/calm", goDot: "dotYellow" },
+  { label: "Urge to act / message / react", hint: "Pause before acting.", go: "#/yellow/stop", goDot: "dotYellow" },
+  { label: "Stuck / frozen", hint: "Body first. Then progress.", go: "#/green/move", goDot: "dotGreen" },
+  { label: "I’m okay — I need direction", hint: "Pick a lane for today.", go: "#/green/direction", goDot: "dotGreen" },
+];
+
 export function renderHome() {
   const wrap = el("div", { class: "homeShell" });
 
-  // Header controls:
-  // - If Safety is active but snoozed => show "Show safety"
-  // - Else if normal snoozed => show "Show suggestions"
-  const normalSnoozed = isSnoozedKey(KEY_SNOOZE_UNTIL);
-  const safetyActive = hasRecentEmergencyFromSession();
-  const safetySnoozed = isSnoozedKey(KEY_SAFETY_SNOOZE_UNTIL);
+  // UI toggles (session-only)
+  let showTools = false;
+  let showGuidance = false;
 
-  const headerButtons = [];
-  if (safetyActive && safetySnoozed) {
-    headerButtons.push(
-      el("button", {
-        class: "btn",
-        type: "button",
-        onClick: () => { clearKey(KEY_SAFETY_SNOOZE_UNTIL); rerenderHomeIfActive() || (location.hash = "#/home"); }
-      }, ["Show safety"])
-    );
-  } else if (normalSnoozed) {
-    headerButtons.push(
-      el("button", {
-        class: "btn",
-        type: "button",
-        onClick: () => { clearKey(KEY_SNOOZE_UNTIL); rerenderHomeIfActive() || (location.hash = "#/home"); }
-      }, ["Show suggestions"])
-    );
-  }
+  function header() {
+    const normalSnoozed = isSnoozedKey(KEY_SNOOZE_UNTIL);
+    const safetyActive = hasRecentEmergencyFromSession();
+    const safetySnoozed = isSnoozedKey(KEY_SAFETY_SNOOZE_UNTIL);
 
-  wrap.appendChild(
-    el("div", { class: "homeHeader" }, [
+    const headerButtons = [];
+
+    if (safetyActive && safetySnoozed) {
+      headerButtons.push(
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => { clearKey(KEY_SAFETY_SNOOZE_UNTIL); rerenderHomeIfActive() || (location.hash = "#/home"); }
+        }, ["Show safety"])
+      );
+    } else if (normalSnoozed) {
+      headerButtons.push(
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => { clearKey(KEY_SNOOZE_UNTIL); rerenderHomeIfActive() || (location.hash = "#/home"); }
+        }, ["Show suggestions"])
+      );
+    }
+
+    return el("div", { class: "homeHeader" }, [
       el("h1", { class: "h1" }, ["Reset"]),
       el("p", { class: "p" }, ["Start with your state. Praxis routes you."]),
-      el("div", { class: "small" }, [`${BUILD_HOME}`]),
+      el("div", { class: "small" }, [`Home ${BUILD_HOME}`]),
       headerButtons.length ? el("div", { class: "btnRow", style: "margin-top:10px" }, headerButtons) : null,
-    ].filter(Boolean))
-  );
+    ].filter(Boolean));
+  }
 
-  // ✅ Home v2 guided start
-  wrap.appendChild(el("div", { class: "card cardPad" }, [
-    el("div", { class: "badge" }, ["Start here"]),
-    el("h2", { class: "h2" }, ["How are you feeling right now?"]),
-    el("p", { class: "small" }, ["One tap. No thinking."]),
-    el("div", { class: "flowShell", style: "margin-top:10px" }, [
-      feelingButton("Overwhelmed / unsafe", "Go to Emergency now.", "#/red/emergency", "dotRed"),
-      feelingButton("Anxious / urge-driven", "Lower intensity first.", "#/yellow/calm", "dotYellow"),
-      feelingButton("Okay, but stuck", "Body first. Then progress.", "#/green/move", "dotGreen"),
-      feelingButton("Stable and ready", "Pick today’s lane, then plan.", "#/green/direction", "dotGreen"),
-    ]),
-  ]));
+  function startCard() {
+    return el("div", { class: "card cardPad" }, [
+      el("div", { class: "badge" }, ["Start here"]),
+      el("h2", { class: "h2" }, ["How are you feeling right now?"]),
+      el("p", { class: "small" }, ["One tap. No thinking."]),
+      el("div", { class: "flowShell", style: "margin-top:10px" }, FEELING_OPTIONS.map(o => feelingTile(o))),
+    ]);
+  }
 
-  // ✅ Suggestions remain available but secondary (reduces chaos)
-  const sCard = suggestionCard();
-  if (sCard) wrap.appendChild(sCard);
+  function controlsCard() {
+    return el("div", { class: "card cardPad" }, [
+      el("div", { class: "btnRow" }, [
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => { showGuidance = !showGuidance; rerender(); }
+        }, [showGuidance ? "Hide guidance" : "Show guidance"]),
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => { showTools = !showTools; rerender(); }
+        }, [showTools ? "Hide tools" : "Show tools"]),
+      ]),
+      el("p", { class: "small", style: "margin-top:8px" }, ["Default is simple. Guidance/tools are optional."]),
+    ]);
+  }
 
-  // ✅ All tools live below (optional)
-  wrap.appendChild(el("div", { class: "card cardPad" }, [
-    el("div", { class: "badge" }, ["All tools (optional)"]),
-    el("p", { class: "small" }, ["Use these if you know what you need."]),
-  ]));
+  function toolsSection() {
+    const tiles = getTiles();
+    return el("div", {}, [
+      el("div", { class: "card cardPad" }, [
+        el("div", { class: "badge" }, ["All tools"]),
+        el("p", { class: "small" }, ["Use these if you already know what you need."]),
+      ]),
+      el("div", { class: "homeGrid" }, tiles.map(tileButton)),
+    ]);
+  }
 
-  const TILES = getTiles();
-  wrap.appendChild(el("div", { class: "homeGrid" }, TILES.map(tileButton)));
+  function rerender() {
+    wrap.innerHTML = "";
+    wrap.appendChild(header());
+    wrap.appendChild(startCard());
+    wrap.appendChild(controlsCard());
 
+    const s = computeSuggestion();
+    const mustShowSafety = s && s.type === "safety";
+    if (mustShowSafety) {
+      const sc = suggestionCard();
+      if (sc) wrap.appendChild(sc);
+    } else if (showGuidance) {
+      const sc = suggestionCard();
+      if (sc) wrap.appendChild(sc);
+    }
+
+    if (showTools) wrap.appendChild(toolsSection());
+  }
+
+  rerender();
   return wrap;
 }
