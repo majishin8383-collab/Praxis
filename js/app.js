@@ -1,8 +1,4 @@
-/*!
- * Praxis
- * © 2025 Joseph Satmary. All rights reserved.
- */
-
+// js/app.js
 import { initRouter } from "./router.js";
 
 initRouter();
