@@ -1,7 +1,7 @@
-// js/ui.js (FULL REPLACEMENT)
+// js/ui.js  (FULL REPLACEMENT)
 import { readLog } from "./storage.js";
 
-const BUILD_HOME = "UI-HOME-4";
+const BUILD_HOME = "UI-HOME-5";
 
 const KEY_DONE = "praxis_onboarding_done";
 const KEY_SAFETY_SNOOZE_UNTIL = "praxis_safety_snooze_until";
@@ -138,7 +138,7 @@ const FEELING_OPTIONS = [
   { label: "Anxious / urge-driven", hint: "Lower intensity first.", go: "#/yellow/calm", goDot: "dotYellow" },
   { label: "Urge to act / message / react", hint: "Pause before acting.", go: "#/yellow/stop", goDot: "dotYellow" },
   { label: "Stuck / frozen", hint: "Body first. Then progress.", go: "#/green/move", goDot: "dotGreen" },
-  { label: "I’m okay — I need direction", hint: "Pick a lane for today.", go: "#/green/direction", goDot: "dotGreen" },
+  { label: "I’m okay — I need direction", hint: "Auto-build today’s plan.", go: "#/green/direction", goDot: "dotGreen" },
 ];
 
 function feelingTile({ label, hint, go, goDot }) {
@@ -169,13 +169,11 @@ function toolsModel() {
   ];
 
   const PLAN = [
-    { title: "Choose Today’s Direction", sub: "Pick a lane", hint: "Stability / Maintenance / Progress / Recovery.", dot: "dotGreen", to: "#/green/direction" },
-    { title: "Today’s Plan", sub: "Three steps only", hint: "Do Step 1 first.", dot: "dotGreen", to: "#/green/today" },
+    { title: "Choose Today’s Direction", sub: "Auto-build Today’s Plan", hint: "One tap → plan → Step 1.", dot: "dotGreen", to: "#/green/direction" },
+    { title: "Edit Today’s Plan", sub: "Three steps only", hint: "Use if you want to customize.", dot: "dotGreen", to: "#/green/today" },
     { title: "Clarify the Next Move", sub: "Lock one action", hint: "Tap quickly. End with one move.", dot: "dotGreen", to: "#/reflect" },
   ];
 
-  // NOTE: “Find Next Step” is redundant with “How are you feeling”
-  // so it lives in Extras as a fallback, not a core tool.
   const EXTRAS = [
     { title: "History", sub: "See momentum", hint: "Recent sessions + summary.", dot: "dotGreen", to: "#/history" },
     { title: done ? "Quick Start (replay)" : "How Praxis Works", sub: done ? "Replay anytime" : "Start here", hint: "Tap → timer → lock a move → do it.", dot: "dotGreen", to: "#/onboarding" },
@@ -188,7 +186,6 @@ function toolsModel() {
 export function renderHome() {
   const wrap = el("div", { class: "homeShell" });
 
-  // session-only UI state (keeps home clean)
   let showTools = false;
   let showPlanTools = false;
   let showExtras = false;
@@ -233,13 +230,12 @@ export function renderHome() {
           type: "button",
           onClick: () => {
             showTools = !showTools;
-            // when opening tools, default to ONLY core
             if (showTools) { showPlanTools = false; showExtras = false; }
             rerender();
           }
         }, [showTools ? "Hide tools" : "Show tools"]),
       ]),
-      el("p", { class: "small", style: "margin-top:8px" }, ["Tools should not overwhelm you. Core first."]),
+      el("p", { class: "small", style: "margin-top:8px" }, ["Core first. Expand only if needed."]),
     ]);
   }
 
@@ -251,7 +247,6 @@ export function renderHome() {
         el("div", { class: "badge" }, ["Tools"]),
         el("p", { class: "small" }, ["Core tools first. Add more only if needed."]),
         el("div", { class: "flowShell", style: "margin-top:10px" }, CORE.map(toolRow)),
-
         el("div", { class: "btnRow", style: "margin-top:12px" }, [
           el("button", {
             class: "btn",
