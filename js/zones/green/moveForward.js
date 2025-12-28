@@ -1,13 +1,17 @@
+// js/zones/green/moveForward.js  (FULL REPLACEMENT)
+
 import { appendLog, readLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
+import { grantStabilizeCreditToday, setNextIntent } from "../../state/handoff.js";
 
-const BUILD = "MF-4";
+const BUILD = "MF-5";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (k === "class") node.className = v;
-    else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (k.startsWith("on") && typeof v === "function")
+      node.addEventListener(k.slice(2).toLowerCase(), v);
     else node.setAttribute(k, v);
   }
   for (const child of children) {
@@ -68,10 +72,8 @@ const LADDERS = [
 export function renderMoveForward() {
   const wrap = el("div", { class: "flowShell" });
 
-  // single-flow modes (tap → next):
-  // pick -> selected -> running -> early_stop -> done -> logged
+  // modes: pick -> selected -> running -> early_stop -> done -> logged
   let mode = "pick";
-
   let selectedLadderId = LADDERS[0].id;
 
   // timer state
@@ -85,7 +87,7 @@ export function renderMoveForward() {
   let stoppedEarly = false;
   let earlyStopElapsedSec = 0;
   let earlyStopReason = null; // "safe" | "bailed" | null
-  let lastOutcome = null; // "done" | "stuck" | null
+  let lastOutcome = null;     // "done" | "stuck" | null
 
   safeAppendLog({ kind: "move_forward_open", when: nowISO(), build: BUILD });
 
@@ -107,6 +109,12 @@ export function renderMoveForward() {
     if (fill) fill.style.width = `${pct.toFixed(1)}%`;
   }
 
+  function goTodayPlanStep2() {
+    // One-time “open Step 2” intent, but Step 1 always remains available.
+    try { setNextIntent("today_plan_step2"); } catch {}
+    location.hash = "#/green/today";
+  }
+
   function selectAndAdvance(id) {
     selectedLadderId = id;
     const ladder = getSelected();
@@ -117,6 +125,9 @@ export function renderMoveForward() {
 
   function startSelected() {
     const ladder = getSelected();
+
+    // ✅ starting Move Forward counts as stabilizing credit for today
+    try { grantStabilizeCreditToday(); } catch {}
 
     running = true;
     stoppedEarly = false;
@@ -203,6 +214,9 @@ export function renderMoveForward() {
     lastOutcome = outcome;
     const ladder = getSelected();
 
+    // ✅ any Move Forward attempt counts as stabilize credit for today
+    try { grantStabilizeCreditToday(); } catch {}
+
     safeAppendLog({
       kind: "move_forward",
       when: nowISO(),
@@ -253,24 +267,26 @@ export function renderMoveForward() {
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["Pick a ladder"]),
       el("p", { class: "small" }, ["Tap one. You’ll start on the next screen."]),
-      el("div", { class: "flowShell", style: "margin-top:10px" }, LADDERS.map(l =>
-        el("button", {
-          class: "actionTile",
-          type: "button",
-          onClick: () => selectAndAdvance(l.id),
-        }, [
-          el("div", { class: "tileTop" }, [
-            el("div", {}, [
-              el("div", { class: "tileTitle" }, [l.title]),
-              el("div", { class: "tileSub" }, [`${l.minutes} min • ${l.desc}`]),
+      el("div", { class: "flowShell", style: "margin-top:10px" },
+        LADDERS.map(l =>
+          el("button", {
+            class: "actionTile",
+            type: "button",
+            onClick: () => selectAndAdvance(l.id),
+          }, [
+            el("div", { class: "tileTop" }, [
+              el("div", {}, [
+                el("div", { class: "tileTitle" }, [l.title]),
+                el("div", { class: "tileSub" }, [`${l.minutes} min • ${l.desc}`]),
+              ]),
+              el("div", { class: "zoneDot dotGreen" }, []),
             ]),
-            el("div", { class: "zoneDot dotGreen" }, []),
-          ]),
-          el("p", { class: "tileHint" }, ["Tap to choose"]),
-        ])
-      )),
+            el("p", { class: "tileHint" }, ["Tap to choose"]),
+          ])
+        )
+      ),
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
-        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/today") }, ["Today’s Plan"]),
+        el("button", { class: "btn", type: "button", onClick: goTodayPlanStep2 }, ["Today’s Plan"]),
       ])
     ]);
   }
@@ -281,11 +297,13 @@ export function renderMoveForward() {
       el("div", { class: "badge" }, ["Do this now"]),
       el("h2", { class: "h2" }, [ladder.title]),
       el("p", { class: "p" }, [ladder.desc]),
-      el("div", { class: "flowShell", style: "margin-top:10px" }, ladder.steps.map(s =>
-        el("div", { style: "padding:10px 0;border-bottom:1px solid var(--line);" }, [
-          el("div", { style: "font-weight:900;" }, [s]),
-        ])
-      )),
+      el("div", { class: "flowShell", style: "margin-top:10px" },
+        ladder.steps.map(s =>
+          el("div", { style: "padding:10px 0;border-bottom:1px solid var(--line);" }, [
+            el("div", { style: "font-weight:900;" }, [s]),
+          ])
+        )
+      ),
       el("div", { class: "btnRow", style: "margin-top:12px" }, [
         el("button", { class: "btn btnPrimary", type: "button", onClick: startSelected }, [`Start • ${ladder.minutes} min`]),
         el("button", { class: "btn", type: "button", onClick: () => { mode = "pick"; rerender(); } }, ["Change ladder"]),
@@ -364,7 +382,7 @@ export function renderMoveForward() {
         ]),
         el("div", { class: "btnRow" }, [
           done
-            ? el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/green/today") }, ["Today’s Plan"])
+            ? el("button", { class: "btn btnPrimary", type: "button", onClick: goTodayPlanStep2 }, ["Today’s Plan"])
             : el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/yellow/calm") }, ["Calm Me Down"]),
           done
             ? el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/next") }, ["Find Next Step"])
@@ -394,13 +412,8 @@ export function renderMoveForward() {
       return;
     }
 
-    // selected / running / early_stop / done / logged:
     if (mode === "selected") wrap.appendChild(selectedCard());
     if (mode === "running") wrap.appendChild(runningCard());
-    if (mode === "early_stop" || mode === "done" || mode === "logged") {
-      // keep the running card visible only if actually running
-      if (running) wrap.appendChild(runningCard());
-    }
 
     const s = statusCard();
     if (s) wrap.appendChild(s);
