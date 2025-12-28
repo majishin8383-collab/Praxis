@@ -3,24 +3,18 @@
 import {
   readLog,
   appendLog,
+  // credit + intent live in storage.js
   hasStabilizeCreditToday,
   grantStabilizeCreditToday,
+  clearStabilizeCredit,
   setNextIntent,
   consumeNextIntent,
 } from "../storage.js";
 
 /**
- * Step A: shared "handoff" state.
- * Purpose:
- * - Provide a stable way to answer: "Has the user stabilized today?"
- * - Keep it log-derived (no locking, no forcing, no UI)
- *
- * "Stabilized" today if they did ANY of:
- * - calm
- * - stop_urge (logged session)
- * - move_forward (logged session)
- *
- * Safety is tracked separately via emergency_open.
+ * state/handoff.js is the stable API that flows import from.
+ * storage.js is the data layer. This file re-exports the needed helpers
+ * and adds a few log-derived convenience checks.
  */
 
 const BUILD = "HANDOFF-2";
@@ -70,43 +64,46 @@ function newestToday(log, kinds) {
 }
 
 /**
- * ✅ REQUIRED EXPORT:
- * True if user has stabilized at any point today (log-derived).
+ * ✅ REQUIRED EXPORTS (used by Today Plan / Move Forward)
+ * These are implemented in storage.js — we re-export here so flows have one import path.
+ */
+export {
+  hasStabilizeCreditToday,
+  grantStabilizeCreditToday,
+  clearStabilizeCredit,
+  setNextIntent,
+  consumeNextIntent,
+};
+
+/**
+ * Log-derived helpers (optional, but useful)
  */
 export function isStabilizedToday() {
+  // Prefer the explicit credit if present (fast + stable)
+  if (hasStabilizeCreditToday()) return true;
+
+  // Fallback: scan log (covers older logs / edge cases)
   const log = safeReadLog(250);
   const hit = newestToday(log, ["calm", "stop_urge", "move_forward"]);
   return !!hit;
 }
 
-/**
- * Returns the most recent stabilization event today (or null).
- */
 export function getStabilizationEventToday() {
   const log = safeReadLog(250);
   return newestToday(log, ["calm", "stop_urge", "move_forward"]);
 }
 
-/**
- * Returns: "calm" | "stop_urge" | "move_forward" | null
- */
 export function getStabilizationSourceToday() {
   const e = getStabilizationEventToday();
   return e ? e.kind : null;
 }
 
-/**
- * Safety flag: did they open Emergency today?
- */
 export function isSafetyActiveToday() {
   const log = safeReadLog(250);
   const e = newestToday(log, ["emergency_open"]);
   return !!e;
 }
 
-/**
- * Optional: mark a handoff moment (telemetry only).
- */
 export function markHandoff(tag, data = {}) {
   safeAppend({
     kind: "handoff",
@@ -117,9 +114,6 @@ export function markHandoff(tag, data = {}) {
   });
 }
 
-/**
- * Optional helper: stabilized within last N minutes
- */
 export function isStabilizedWithinMinutes(minutes = 120) {
   const log = safeReadLog(250);
   const cutoff = Date.now() - Math.max(1, minutes) * 60 * 1000;
@@ -132,9 +126,3 @@ export function isStabilizedWithinMinutes(minutes = 120) {
   }
   return false;
 }
-
-// ------------------------------------------------------
-// ✅ Re-export “credit + intent” helpers from storage.js
-// so flows can import consistently from state/handoff.js
-// ------------------------------------------------------
-export { hasStabilizeCreditToday, grantStabilizeCreditToday, setNextIntent, consumeNextIntent };
