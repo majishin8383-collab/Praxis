@@ -1,41 +1,80 @@
-// js/state/handoff.js  (NEW FILE)
-// Universal handoff + daily credits (soft guidance only)
+// js/state/handoff.js  (FULL REPLACEMENT)
+//
+// Purpose:
+// - Provide a tiny cross-screen "handoff" intent (e.g., route into Today Plan at Step 2)
+// - Provide simple "today" flags so flows can coordinate (stabilized / acted)
+// - Export names that other modules may import (prevents route-load crashes)
 
-const KEY_NEXT_INTENT = "praxis_next_intent_v1";
-const KEY_STABILIZE_DAY = "praxis_credit_stabilize_day_v1";
+const KEY_INTENT = "praxis_next_intent_v1";
+const KEY_STABILIZED_DAY = "praxis_stabilized_day_v1";
+const KEY_ACTED_DAY = "praxis_acted_day_v1";
 
-function todayKey() {
+function todayStamp() {
   const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`; // local device day
+  d.setHours(0, 0, 0, 0);
+  return String(d.getTime());
 }
 
-// ---- One-time intent (session-only) ----
+// ---------- Intent (one-shot) ----------
 export function setNextIntent(intent) {
-  try { sessionStorage.setItem(KEY_NEXT_INTENT, String(intent || "")); } catch {}
+  try {
+    localStorage.setItem(KEY_INTENT, String(intent || ""));
+  } catch {}
+}
+
+export function peekNextIntent() {
+  try {
+    return localStorage.getItem(KEY_INTENT) || "";
+  } catch {
+    return "";
+  }
 }
 
 export function consumeNextIntent() {
   try {
-    const v = sessionStorage.getItem(KEY_NEXT_INTENT) || "";
-    sessionStorage.removeItem(KEY_NEXT_INTENT);
-    return v || null;
+    const v = localStorage.getItem(KEY_INTENT) || "";
+    localStorage.setItem(KEY_INTENT, "");
+    return v;
   } catch {
-    return null;
+    return "";
   }
 }
 
-// ---- Daily credits (persist, but only for guidance) ----
-export function grantStabilizeCreditToday() {
-  try { localStorage.setItem(KEY_STABILIZE_DAY, todayKey()); } catch {}
+export function clearNextIntent() {
+  try {
+    localStorage.setItem(KEY_INTENT, "");
+  } catch {}
 }
 
-export function hasStabilizeCreditToday() {
-  try { return localStorage.getItem(KEY_STABILIZE_DAY) === todayKey(); } catch { return false; }
+// ---------- Today flags ----------
+export function markStabilizedToday() {
+  try {
+    localStorage.setItem(KEY_STABILIZED_DAY, todayStamp());
+  } catch {}
 }
 
-export function clearStabilizeCredit() {
-  try { localStorage.removeItem(KEY_STABILIZE_DAY); } catch {}
+export function isStabilizedToday() {
+  try {
+    return localStorage.getItem(KEY_STABILIZED_DAY) === todayStamp();
+  } catch {
+    return false;
+  }
 }
+
+export function markActedToday() {
+  try {
+    localStorage.setItem(KEY_ACTED_DAY, todayStamp());
+  } catch {}
+}
+
+export function hasActedToday() {
+  try {
+    return localStorage.getItem(KEY_ACTED_DAY) === todayStamp();
+  } catch {
+    return false;
+  }
+}
+
+// Back-compat aliases (in case older files used different names)
+export const getNextIntent = peekNextIntent;
+export const popNextIntent = consumeNextIntent;
