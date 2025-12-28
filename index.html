@@ -26,7 +26,6 @@
       </nav>
     </header>
 
-    <!-- 🔴 THIS WAS MISSING -->
     <main id="main" class="main" role="main"></main>
 
     <footer class="footer">
@@ -40,7 +39,9 @@
     </footer>
   </div>
 
-  <!-- App Boot -->
-  <script type="module" src="./js/app.js"></script>
+  <!-- ✅ Cache-busted boot -->
+  <script type="module">
+    import(`./js/app.js?v=${Date.now()}`);
+  </script>
 </body>
 </html>
