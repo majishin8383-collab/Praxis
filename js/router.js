@@ -25,7 +25,6 @@ function el(tag, attrs = {}, children = []) {
 function errorView(err, hash) {
   const msg = String(err?.message || err || "Unknown error");
   const stack = String(err?.stack || "");
-
   return el("div", { class: "flowShell" }, [
     el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["Route error"]),
@@ -33,26 +32,59 @@ function errorView(err, hash) {
       el("p", { class: "p" }, [`Route: ${hash || "(none)"}`]),
       el("p", { class: "small" }, [msg]),
       stack
-        ? el("pre", {
-            style:
-              "white-space:pre-wrap;word-break:break-word;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.04);font-size:12px;opacity:.9;",
-          }, [stack])
+        ? el(
+            "pre",
+            {
+              style:
+                "white-space:pre-wrap;word-break:break-word;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.04);font-size:12px;opacity:.9;",
+            },
+            [stack]
+          )
         : null,
       el("div", { class: "btnRow", style: "margin-top:12px" }, [
         el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, ["Go Home"]),
         el("button", { class: "btn", type: "button", onClick: () => location.reload() }, ["Reload"]),
       ]),
       el("p", { class: "small", style: "margin-top:10px" }, [
-        "If this keeps happening, a file path or export name is wrong. This screen proves the app is running — one module is failing."
+        "If this keeps happening, a file path or export name is wrong. This screen proves the app is running — one module is failing.",
       ]),
     ].filter(Boolean)),
   ]);
 }
 
 /**
+ * Normalizes hashes so tiny variations don't break routing.
+ * - Forces "#/home" default
+ * - Strips any querystring after the hash (rare but possible)
+ * - Collapses common aliases
+ */
+function normalizeHash(raw) {
+  let h = String(raw || "").trim();
+  if (!h) return "#/home";
+
+  // Some browsers/extensions can produce "#/path?x=y"
+  const q = h.indexOf("?");
+  if (q >= 0) h = h.slice(0, q);
+
+  // Ensure starts with "#/"
+  if (h[0] !== "#") return "#/home";
+  if (!h.startsWith("#/")) {
+    // allow "#home" / "#home" style junk to fall back
+    return "#/home";
+  }
+
+  // Aliases (keep minimal)
+  const alias = {
+    "#/reset": "#/home",
+    "#/start": "#/home",
+  };
+  return alias[h] || h;
+}
+
+/**
  * Lazy route loader.
  * Each route returns a Promise that resolves to a DOM node.
- * If any module is missing or export mismatch happens, we catch and render an error view (no more blank screen).
+ * If any module is missing or export mismatch happens, we catch and render an error view.
  */
 const routes = new Map([
   ["#/home", async () => (await import("./ui.js")).renderHome()],
@@ -65,17 +97,17 @@ const routes = new Map([
   ["#/green/direction", async () => (await import("./zones/green/direction.js")).renderDirection()],
   ["#/green/next", async () => (await import("./zones/green/nextStep.js")).renderNextStep()],
 
+  // kept as working tools / internals
   ["#/green/focus", async () => (await import("./zones/green/focusSprint.js")).renderFocusSprint()],
   ["#/green/today", async () => (await import("./zones/green/todayPlan.js")).renderTodayPlan()],
 
   ["#/reflect", async () => (await import("./zones/reflect.js")).renderReflect()],
-
   ["#/history", async () => (await import("./history.js")).renderHistory()],
   ["#/onboarding", async () => (await import("./onboarding.js")).renderOnboarding()],
 ]);
 
 function getHash() {
-  return location.hash || "#/home";
+  return normalizeHash(location.hash || "#/home");
 }
 
 async function onRouteChange() {
@@ -99,9 +131,6 @@ export function initRouter() {
 
   if (!location.hash) location.hash = "#/home";
 
-  window.addEventListener("hashchange", () => {
-    onRouteChange();
-  });
-
+  window.addEventListener("hashchange", onRouteChange);
   onRouteChange();
 }
