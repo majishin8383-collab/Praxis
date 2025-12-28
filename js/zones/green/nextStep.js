@@ -1,13 +1,21 @@
 // js/zones/green/nextStep.js  (FULL REPLACEMENT)
 
-const BUILD = "NS-3";
+import { setNextIntent, hasStabilizeCreditToday } from "../../storage.js";
+
+const BUILD = "NS-2";
+
+// Must match Today Plan + Direction
+const KEY_TODAY = "praxis_today_plan_v5";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
+    if (v === null || v === undefined || v === false) continue;
     if (k === "class") node.className = v;
     else if (k === "html") node.innerHTML = v;
-    else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (k.startsWith("on") && typeof v === "function")
+      node.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (v === true) node.setAttribute(k, "");
     else node.setAttribute(k, v);
   }
   for (const child of children) {
@@ -17,41 +25,118 @@ function el(tag, attrs = {}, children = []) {
   return node;
 }
 
+const TEMPLATES = [
+  { id: "stability", label: "Stability", a: "2-min Calm", b: "5-min walk / movement", c: "One small maintenance task" },
+  { id: "maintenance", label: "Maintenance", a: "Clean one area (10 min)", b: "Reply to one important thing", c: "Prep tomorrow (5 min)" },
+  { id: "progress", label: "Progress", a: "Start the hard task (25 min)", b: "Continue or finish (10–25 min)", c: "Quick wrap-up / tidy (5 min)" },
+  { id: "recovery", label: "Recovery", a: "Eat / hydrate", b: "Shower or reset body", c: "Early night / low stimulation" },
+];
+
+function getTemplateById(id) {
+  return TEMPLATES.find(t => t.id === id) || TEMPLATES[2]; // default Progress
+}
+
+function normalizeState(s) {
+  const doneStep = Number(s?.doneStep);
+  return {
+    template: s?.template || "",
+    a: s?.a || "",
+    b: s?.b || "",
+    c: s?.c || "",
+    doneStep: Number.isFinite(doneStep) ? doneStep : 0,
+  };
+}
+
+function readTodayState() {
+  try {
+    const raw = localStorage.getItem(KEY_TODAY);
+    if (!raw) return { template: "", a: "", b: "", c: "", doneStep: 0 };
+    return normalizeState(JSON.parse(raw));
+  } catch {
+    return { template: "", a: "", b: "", c: "", doneStep: 0 };
+  }
+}
+
+function saveTodayState(state) {
+  try {
+    localStorage.setItem(KEY_TODAY, JSON.stringify(state));
+  } catch {}
+}
+
+function isBlankPlan(state) {
+  const a = (state.a || "").trim();
+  const b = (state.b || "").trim();
+  const c = (state.c || "").trim();
+  return !a && !b && !c;
+}
+
+/**
+ * Seed Today Plan only if blank (never overwrite user plan).
+ * If user already has a plan, we keep it as-is.
+ */
+function seedPlanIfBlank(templateId) {
+  const state = readTodayState();
+  if (!isBlankPlan(state)) {
+    // Ensure template marker exists for UX clarity, but don't change steps
+    if (!state.template) {
+      saveTodayState({ ...state, template: "custom" });
+    }
+    return;
+  }
+  const t = getTemplateById(templateId);
+  saveTodayState({ template: t.id, a: t.a, b: t.b, c: t.c, doneStep: 0 });
+}
+
 const OPTIONS = [
   {
-    label: "I’m dysregulated (anxious / intense)",
+    label: "Overwhelmed / anxious",
     hint: "Reduce intensity first.",
-    go: "#/yellow/calm",
-    goLabel: "Calm Me Down",
-    dot: "dotYellow",
+    action: () => {
+      seedPlanIfBlank("stability");
+      location.hash = "#/yellow/calm";
+    },
   },
   {
-    label: "I have an urge to react / message / act",
-    hint: "Pause before doing anything.",
-    go: "#/yellow/stop",
-    goLabel: "Stop the Urge",
-    dot: "dotYellow",
+    label: "Urge to act / message / react",
+    hint: "Pause before you do anything.",
+    action: () => {
+      seedPlanIfBlank("stability");
+      location.hash = "#/yellow/stop";
+    },
   },
   {
-    label: "I’m stuck / frozen",
-    hint: "Body first. Then progress.",
-    go: "#/green/move",
-    goLabel: "Move Forward",
-    dot: "dotGreen",
+    label: "Stuck / frozen",
+    hint: "Move your body first.",
+    action: () => {
+      seedPlanIfBlank("progress");
+      location.hash = "#/green/move";
+    },
   },
   {
-    label: "I’m stable — I need a plan",
-    hint: "Three steps. One step at a time.",
-    go: "#/green/today",
-    goLabel: "Today’s Plan",
-    dot: "dotGreen",
+    label: "Restless / distracted",
+    hint: "Discharge energy, then choose a step.",
+    action: () => {
+      seedPlanIfBlank("progress");
+      location.hash = "#/green/move";
+    },
   },
   {
-    label: "I’m stable — I need direction",
-    hint: "Pick a lane. Auto-build the plan.",
-    go: "#/green/direction",
-    goLabel: "Today’s Direction",
-    dot: "dotGreen",
+    label: "I’m okay — I need direction",
+    hint: "Auto-build a plan. Start Step 1.",
+    action: () => {
+      // Default: Progress. User can change template inside Today’s Plan.
+      seedPlanIfBlank("progress");
+      try { setNextIntent(""); } catch {}
+      location.hash = "#/green/today";
+    },
+  },
+  {
+    label: "I don’t know",
+    hint: "Start moving. Clarity follows.",
+    action: () => {
+      seedPlanIfBlank("stability");
+      location.hash = "#/green/move";
+    },
   },
 ];
 
@@ -62,9 +147,12 @@ export function renderNextStep() {
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["Find Your Next Step"]),
-        el("p", { class: "p" }, ["Tap what’s closest. No overthinking."]),
+        el("p", { class: "p" }, ["One tap → Praxis routes you and keeps Today’s Plan ready."]),
         el("div", { class: "small" }, [`Build ${BUILD}`]),
-      ]),
+        hasStabilizeCreditToday()
+          ? el("div", { class: "small" }, ["Stabilized today ✓ (Today’s Plan Step 2 available)"])
+          : null,
+      ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
         el("button", { class: "linkBtn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
       ]),
@@ -77,15 +165,15 @@ export function renderNextStep() {
       {
         class: "actionTile",
         type: "button",
-        onClick: () => (location.hash = o.go),
+        onClick: o.action,
       },
       [
         el("div", { class: "tileTop" }, [
           el("div", {}, [
             el("div", { class: "tileTitle" }, [o.label]),
-            el("div", { class: "tileSub" }, [o.goLabel]),
+            el("div", { class: "tileSub" }, ["Tap to go"]),
           ]),
-          el("div", { class: `zoneDot ${o.dot}` }, []),
+          el("div", { class: "zoneDot dotGreen" }, []),
         ]),
         el("p", { class: "tileHint" }, [o.hint]),
       ]
@@ -96,21 +184,21 @@ export function renderNextStep() {
 
   wrap.appendChild(
     el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["Routing tool"]),
-      el("p", { class: "small" }, ["Home is for “how do I feel.” This is for “what do I do next.”"]),
+      el("div", { class: "badge" }, ["Don’t overthink"]),
+      el("p", { class: "p" }, ["Choose what fits right now. Praxis keeps the plan ready behind you."]),
+      el("div", { class: "btnRow", style: "margin-top:10px" }, [
+        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/today") }, ["Open Today’s Plan"]),
+      ]),
     ])
   );
 
   wrap.appendChild(el("div", { class: "flowShell" }, OPTIONS.map(tile)));
 
-  // Always-available safety link (quiet, but present)
   wrap.appendChild(
     el("div", { class: "card cardPad" }, [
       el("p", { class: "small" }, ["If safety is at risk:"]),
       el("div", { class: "btnRow" }, [
-        el("button", { class: "btn btnDanger", type: "button", onClick: () => (location.hash = "#/red/emergency") }, [
-          "Emergency",
-        ]),
+        el("button", { class: "btn btnDanger", type: "button", onClick: () => (location.hash = "#/red/emergency") }, ["Emergency"]),
       ]),
     ])
   );
