@@ -1,18 +1,20 @@
 // js/zones/green/todayPlan.js  (FULL REPLACEMENT)
 import { appendLog, readLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
-import { consumeNextIntent, hasStabilizeCreditToday } from "../../state/handoff.js";
+import { isStabilizedToday } from "../../state/handoff.js";
 
-const BUILD = "TP-12";
+const BUILD = "TP-13";
 const KEY = "praxis_today_plan_v5";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (v === null || v === undefined || v === false) continue;
+
     if (k === "class") node.className = v;
     else if (k === "html") node.innerHTML = v;
-    else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (k.startsWith("on") && typeof v === "function")
+      node.addEventListener(k.slice(2).toLowerCase(), v);
     else if (v === true) node.setAttribute(k, "");
     else node.setAttribute(k, v);
   }
@@ -52,6 +54,7 @@ const TEMPLATES = [
   { id: "recovery", label: "Recovery", a: "Eat / hydrate", b: "Shower or reset body", c: "Early night / low stimulation" },
 ];
 
+// Detect patterns like "2-min", "5-min", "10–25 min"
 function detectMinutes(text) {
   if (!text) return null;
   const t = String(text).toLowerCase();
@@ -87,6 +90,9 @@ export function renderTodayPlan() {
   const wrap = el("div", { class: "flowShell" });
   let state = readState();
 
+  // ✅ Handoff credit (log-derived, never locks user out)
+  const stabilizedToday = isStabilizedToday();
+
   // timer state
   let running = false;
   let activeStep = 1; // 1..3
@@ -97,21 +103,16 @@ export function renderTodayPlan() {
 
   // UI state
   let showRefine = false;
-  let statusMode = "idle";
-  let lastOutcome = null;
+  let statusMode = "idle"; // idle | running | time_complete | offer_continue | stopped_early | logged
+  let lastOutcome = null;  // done | stuck | null
   let stopElapsedSec = 0;
 
-  // ✅ soft handoff / credit
-  const intent = consumeNextIntent(); // one-time
-  const stabilizedToday = hasStabilizeCreditToday();
-
-  // If they stabilized today (or explicit intent), default to Step 2 *without* marking Step 1 done.
-  // They can ALWAYS click Step 1 if they want.
-  if ((intent === "today_plan_step2" || stabilizedToday) && (state.doneStep < 1)) {
+  // ✅ If they stabilized today, default to Step 2 view (but don't hard-mark Step 1 done)
+  if (stabilizedToday && state.doneStep < 1) {
     activeStep = 2;
   }
 
-  safeAppendLog({ kind: "today_plan_open", when: nowISO(), build: BUILD, intent: intent || null, stabilizedToday });
+  safeAppendLog({ kind: "today_plan_open", when: nowISO(), build: BUILD, stabilizedToday });
 
   function stopTick() { if (tick) clearInterval(tick); tick = null; }
 
@@ -130,10 +131,12 @@ export function renderTodayPlan() {
     return s.c;
   }
 
-  // ✅ key change: Step 2 allowed if Step 1 done OR stabilizedToday
+  // ✅ Gate: Step 2 is allowed if Step 1 done OR stabilized today.
+  // Step 3 still requires Step 2 done.
   function canStartStep(n) {
+    const step1Ok = state.doneStep >= 1 || stabilizedToday;
     if (n === 1) return true;
-    if (n === 2) return state.doneStep >= 1 || stabilizedToday;
+    if (n === 2) return step1Ok;
     if (n === 3) return state.doneStep >= 2;
     return false;
   }
@@ -285,9 +288,9 @@ export function renderTodayPlan() {
         el("h1", { class: "h1" }, ["Today’s Plan"]),
         el("p", { class: "p" }, ["Three steps only. Do one step at a time."]),
         el("div", { class: "small" }, [`Build ${BUILD}`]),
-        stabilizedToday && state.doneStep < 1
+        (stabilizedToday && state.doneStep < 1)
           ? el("div", { class: "small" }, ["Stabilized today ✓ (Step 2 available)"])
-          : null
+          : null,
       ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
         el("button", { class: "linkBtn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
@@ -510,7 +513,8 @@ export function renderTodayPlan() {
   }
 
   function recentCard() {
-    const log = readLog().filter(e => e.kind === "today_plan_step").slice(0, 4);
+    let log = [];
+    try { log = readLog().filter(e => e.kind === "today_plan_step").slice(0, 4); } catch { log = []; }
     if (!log.length) return null;
 
     return el("div", { class: "card cardPad" }, [
