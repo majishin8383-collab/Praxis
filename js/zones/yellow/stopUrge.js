@@ -1,5 +1,6 @@
 import { appendLog, readLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
+import { grantStabilizeCreditToday, setNextIntent } from "../../state/handoff.js";
 
 const BUILD = "SU-8";
 
@@ -18,7 +19,10 @@ function el(tag, attrs = {}, children = []) {
 }
 
 const nowISO = () => new Date().toISOString();
-function safeAppendLog(entry) { try { appendLog(entry); } catch {} }
+
+function safeAppendLog(entry) {
+  try { appendLog(entry); } catch {}
+}
 
 function copyToClipboard(text) {
   if (navigator.clipboard?.writeText) {
@@ -173,6 +177,11 @@ export function renderStopUrge() {
       scriptOption: (s.optionIndex ?? 0) + 1,
       build: BUILD
     });
+
+    // ✅ Stabilize credit when urge passes (soft guidance only)
+    if (outcome === "passed") {
+      try { grantStabilizeCreditToday(); } catch {}
+    }
   }
 
   function stopEarly() {
@@ -326,8 +335,8 @@ export function renderStopUrge() {
             type: "button",
             onClick: () => {
               earlyStopReason = "bailed";
-              lastOutcome = "still_present";
               rerender("logged");
+              lastOutcome = "still_present";
             }
           }, ["I’m still hot / about to act"]),
         ]),
@@ -358,28 +367,49 @@ export function renderStopUrge() {
       const passed = lastOutcome === "passed";
       const still = lastOutcome === "still_present";
 
+      const headline =
+        still && earlyStopReason === "bailed"
+          ? "Don’t improvise. Change state or add time."
+          : passed
+          ? "Good. Convert that win into motion."
+          : still
+          ? "Okay. Don’t improvise. Change state or add more time."
+          : "Logged. Choose the next right action.";
+
       return el("div", { class: "card cardPad" }, [
-        el("div", { class: "badge" }, ["Next"]),
-        el("p", { class: "p" }, [
-          passed
-            ? "Good. Don’t browse tools. Turn this into a plan."
-            : "Okay. Don’t improvise. Stabilize again, or use Emergency if risk is rising."
-        ]),
+        el("div", { class: "badge" }, ["Next move"]),
+        el("p", { class: "p" }, [headline]),
         el("div", { class: "btnRow" }, [
           passed
-            ? el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/green/today") }, ["Go to Today’s Plan"])
+            ? el("button", {
+                class: "btn btnPrimary",
+                type: "button",
+                onClick: () => {
+                  // ✅ handoff: if they go to Today’s Plan now, default to Step 2
+                  setNextIntent("today_plan_step2");
+                  location.hash = "#/green/today";
+                }
+              }, ["Today’s Plan"])
             : el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/yellow/calm") }, ["Calm Me Down"]),
+
+          passed
+            ? el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/move") }, ["Move Forward"])
+            : el("button", { class: "btn", type: "button", onClick: () => startPause(10) }, ["Start 10 min"]),
+
           still
-            ? el("button", { class: "btn btnDanger", type: "button", onClick: () => (location.hash = "#/red/emergency") }, ["Emergency"])
-            : el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
-        ]),
+            ? el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/red/emergency") }, ["Emergency"])
+            : el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Back to Reset"]),
+        ].filter(Boolean)),
         el("div", { class: "btnRow" }, [
           el("button", { class: "btn", type: "button", onClick: () => rerender("idle") }, ["Run again"]),
         ]),
       ]);
     }
 
-    return null;
+    return el("div", { class: "card cardPad" }, [
+      el("div", { class: "badge" }, ["When you’re ready"]),
+      el("p", { class: "p" }, ["Start a pause. If needed, use a script."]),
+    ]);
   }
 
   function rerender(mode) {
@@ -397,7 +427,7 @@ export function renderStopUrge() {
     const logCard = el("div", { class: "card cardPad" }, [recentLogs()]);
 
     wrap.appendChild(pauseCard);
-    if (status) wrap.appendChild(status);
+    wrap.appendChild(status);
     wrap.appendChild(scriptsCard);
     wrap.appendChild(logCard);
 
