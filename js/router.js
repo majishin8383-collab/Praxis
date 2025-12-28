@@ -1,59 +1,107 @@
-// js/router.js
-import { setMain, renderHome } from "./ui.js";
+/*!
+ * Praxis
+ * © 2025 Joseph Satmary. All rights reserved.
+ */
 
-import { renderCalm } from "./zones/yellow/calm.js";
-import { renderStopUrge } from "./zones/yellow/stopUrge.js";
-import { renderEmergency } from "./zones/red/emergency.js";
+import { setMain } from "./ui.js";
 
-import { renderMoveForward } from "./zones/green/moveForward.js";
-import { renderDirection } from "./zones/green/direction.js";
-import { renderNextStep } from "./zones/green/nextStep.js";
-import { renderTodayPlan } from "./zones/green/todayPlan.js";
+function el(tag, attrs = {}, children = []) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k === "class") node.className = v;
+    else if (k === "html") node.innerHTML = v;
+    else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (v === true) node.setAttribute(k, "");
+    else node.setAttribute(k, v);
+  }
+  for (const child of children) {
+    if (child == null) continue;
+    node.appendChild(typeof child === "string" ? document.createTextNode(child) : child);
+  }
+  return node;
+}
 
-import { renderReflect } from "./zones/reflect.js";
-import { renderHistory } from "./history.js";
-import { renderOnboarding } from "./onboarding.js";
+function errorView(err, hash) {
+  const msg = String(err?.message || err || "Unknown error");
+  const stack = String(err?.stack || "");
 
-const routes = {
-  "#/home": renderHome,
+  return el("div", { class: "flowShell" }, [
+    el("div", { class: "card cardPad" }, [
+      el("div", { class: "badge" }, ["Route error"]),
+      el("h2", { class: "h2" }, ["Something failed to load"]),
+      el("p", { class: "p" }, [`Route: ${hash || "(none)"}`]),
+      el("p", { class: "small" }, [msg]),
+      stack
+        ? el("pre", {
+            style:
+              "white-space:pre-wrap;word-break:break-word;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.04);font-size:12px;opacity:.9;",
+          }, [stack])
+        : null,
+      el("div", { class: "btnRow", style: "margin-top:12px" }, [
+        el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, ["Go Home"]),
+        el("button", { class: "btn", type: "button", onClick: () => location.reload() }, ["Reload"]),
+      ]),
+      el("p", { class: "small", style: "margin-top:10px" }, [
+        "If this keeps happening, a file path or export name is wrong. This screen proves the app is running — one module is failing."
+      ]),
+    ].filter(Boolean)),
+  ]);
+}
 
-  "#/yellow/calm": renderCalm,
-  "#/yellow/stop": renderStopUrge,
-  "#/red/emergency": renderEmergency,
+/**
+ * Lazy route loader.
+ * Each route returns a Promise that resolves to a DOM node.
+ * If any module is missing or export mismatch happens, we catch and render an error view (no more blank screen).
+ */
+const routes = new Map([
+  ["#/home", async () => (await import("./ui.js")).renderHome()],
 
-  "#/green/move": renderMoveForward,
-  "#/green/direction": renderDirection,
-  "#/green/next": renderNextStep,
-  "#/green/today": renderTodayPlan,
+  ["#/yellow/calm", async () => (await import("./zones/yellow/calm.js")).renderCalm()],
+  ["#/yellow/stop", async () => (await import("./zones/yellow/stopUrge.js")).renderStopUrge()],
+  ["#/red/emergency", async () => (await import("./zones/red/emergency.js")).renderEmergency()],
 
-  "#/reflect": renderReflect,
-  "#/history": renderHistory,
-  "#/onboarding": renderOnboarding,
-};
+  ["#/green/move", async () => (await import("./zones/green/moveForward.js")).renderMoveForward()],
+  ["#/green/direction", async () => (await import("./zones/green/direction.js")).renderDirection()],
+  ["#/green/next", async () => (await import("./zones/green/nextStep.js")).renderNextStep()],
 
-function renderRoute() {
-  const hash = location.hash || "#/home";
-  const viewFn = routes[hash] || renderHome;
+  ["#/green/focus", async () => (await import("./zones/green/focusSprint.js")).renderFocusSprint()],
+  ["#/green/today", async () => (await import("./zones/green/todayPlan.js")).renderTodayPlan()],
+
+  ["#/reflect", async () => (await import("./zones/reflect.js")).renderReflect()],
+
+  ["#/history", async () => (await import("./history.js")).renderHistory()],
+  ["#/onboarding", async () => (await import("./onboarding.js")).renderOnboarding()],
+]);
+
+function getHash() {
+  return location.hash || "#/home";
+}
+
+async function onRouteChange() {
+  const hash = getHash();
+  const handler = routes.get(hash) || routes.get("#/home");
 
   try {
-    const view = viewFn();
+    const view = await handler();
     setMain(view);
+    window.scrollTo(0, 0);
   } catch (err) {
-    console.error("Router render failed:", err);
-    setMain(renderHome()); // 🔒 hard fallback
+    console.error("ROUTE FAIL:", hash, err);
+    setMain(errorView(err, hash));
+    window.scrollTo(0, 0);
   }
-
-  window.scrollTo(0, 0);
 }
 
 export function initRouter() {
   const homeBtn = document.getElementById("navHome");
-  homeBtn?.addEventListener("click", () => {
-    location.hash = "#/home";
-  });
+  homeBtn?.addEventListener("click", () => (location.hash = "#/home"));
 
   if (!location.hash) location.hash = "#/home";
 
-  window.addEventListener("hashchange", renderRoute);
-  renderRoute(); // 🔴 THIS WAS THE FAILURE POINT BEFORE
+  window.addEventListener("hashchange", () => {
+    onRouteChange();
+  });
+
+  onRouteChange();
 }
