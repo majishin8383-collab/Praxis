@@ -1,18 +1,18 @@
 // js/zones/green/moveForward.js  (FULL REPLACEMENT)
 
-import { appendLog, readLog } from "../../storage.js";
+import { appendLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 import { grantStabilizeCreditToday, setNextIntent } from "../../state/handoff.js";
 
-const BUILD = "MF-5";
+const BUILD = "MF-6";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (k === "class") node.className = v;
-    else if (k.startsWith("on") && typeof v === "function")
+    else if (k.startsWith("on") && typeof v === "function") {
       node.addEventListener(k.slice(2).toLowerCase(), v);
-    else node.setAttribute(k, v);
+    } else node.setAttribute(k, v);
   }
   for (const child of children) {
     if (child == null) continue;
@@ -126,7 +126,7 @@ export function renderMoveForward() {
   function startSelected() {
     const ladder = getSelected();
 
-    // ✅ starting Move Forward counts as stabilizing credit for today
+    // Starting Move Forward counts as stabilizing credit for today
     try { grantStabilizeCreditToday(); } catch {}
 
     running = true;
@@ -157,9 +157,7 @@ export function renderMoveForward() {
         running = false;
         mode = "done";
         rerender();
-      } else {
-        updateTimerUI();
-      }
+      } else updateTimerUI();
     }, 250);
 
     mode = "running";
@@ -214,7 +212,7 @@ export function renderMoveForward() {
     lastOutcome = outcome;
     const ladder = getSelected();
 
-    // ✅ any Move Forward attempt counts as stabilize credit for today
+    // Any Move Forward attempt counts as stabilize credit for today
     try { grantStabilizeCreditToday(); } catch {}
 
     safeAppendLog({
@@ -229,25 +227,6 @@ export function renderMoveForward() {
       earlyStopElapsedSec,
       build: BUILD
     });
-  }
-
-  function recentLogs() {
-    const log = readLog().filter(e => e.kind === "move_forward").slice(0, 4);
-    if (!log.length) return null;
-
-    return el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["Recent Move Forward"]),
-      ...log.map(e =>
-        el("div", { style: "padding:10px 0;border-bottom:1px solid var(--line);" }, [
-          el("div", { style: "font-weight:900;" }, [e.ladderTitle || "Move Forward"]),
-          el("div", { class: "small" }, [
-            `${new Date(e.when).toLocaleString()} • ${e.minutes ?? ""} min • ${
-              e.outcome === "done" ? "Done" : "Still stuck"
-            }${e.stoppedEarly ? " • stopped early" : ""}`
-          ]),
-        ])
-      )
-    ]);
   }
 
   function header() {
@@ -407,8 +386,6 @@ export function renderMoveForward() {
 
     if (mode === "pick") {
       wrap.appendChild(pickerCard());
-      const r = recentLogs();
-      if (r) wrap.appendChild(r);
       return;
     }
 
@@ -417,9 +394,6 @@ export function renderMoveForward() {
 
     const s = statusCard();
     if (s) wrap.appendChild(s);
-
-    const r = recentLogs();
-    if (r) wrap.appendChild(r);
 
     if (running) updateTimerUI();
   }
