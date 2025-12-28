@@ -1,7 +1,7 @@
+// js/zones/yellow/calm.js  (FULL REPLACEMENT)
 import { appendLog, readLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
-
-const BUILD = "CA-3";
+import { grantStabilizeCreditToday, setNextIntent } from "../../state/handoff.js";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -57,7 +57,9 @@ export function renderCalm() {
   }
 
   function log(relief = null) {
-    appendLog({ kind: "calm", when: nowISO(), minutes: durationMin, relief, build: BUILD });
+    appendLog({ kind: "calm", when: nowISO(), minutes: durationMin, relief });
+    // ✅ soft “stabilized today” credit (guidance only)
+    grantStabilizeCreditToday();
   }
 
   function recent() {
@@ -80,7 +82,6 @@ export function renderCalm() {
       el("div", {}, [
         el("h1", { class: "h1" }, ["Calm Me Down"]),
         el("p", { class: "p" }, ["Lower intensity."]),
-        el("div", { class: "small" }, [`Build ${BUILD}`]),
       ]),
       el("div", { class: "flowMeta" }, [
         el("button", { class: "linkBtn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
@@ -115,24 +116,30 @@ export function renderCalm() {
   function donePanel() {
     return el("div", { class: "flowShell" }, [
       el("div", { class: "badge" }, ["Good. That was enough."]),
-      el("p", { class: "p" }, ["Don’t browse tools. Go straight to a simple plan."]),
+      el("p", { class: "p" }, ["Continue only if needed."]),
       el("div", { class: "btnRow" }, [
         el("button", { class: "btn btnPrimary", type: "button", onClick: () => start(5) }, ["Continue 5 minutes"]),
-        el("button", { class: "btn", type: "button", onClick: () => start(10) }, ["Continue 10 minutes"]),
-      ]),
-      el("div", { class: "btnRow" }, [
-        el("button", { class: "btn btnPrimary", type: "button", onClick: () => { log(); rerender("saved"); } }, ["Finish"]),
+        el("button", { class: "btn btnPrimary", type: "button", onClick: () => start(10) }, ["Continue 10 minutes"]),
+        el("button", { class: "btn", type: "button", onClick: () => { log(); rerender("saved"); } }, ["I’m okay"]),
       ]),
     ]);
   }
 
   function savedPanel() {
-    // ✅ New: consistent next step
     return el("div", { class: "flowShell" }, [
-      el("div", { class: "badge" }, ["Saved. Next: plan."]),
-      el("p", { class: "p" }, ["Turn this into 3 steps. Keep it small."]),
+      el("div", { class: "badge" }, ["Saved."]),
+      el("p", { class: "p" }, ["Move forward, plan, or reset."]),
       el("div", { class: "btnRow" }, [
-        el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/green/today") }, ["Go to Today’s Plan"]),
+        el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/green/move") }, ["Move Forward"]),
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => {
+            // ✅ one-time intent: if they go to Today’s Plan right now, start at Step 2 (soft)
+            setNextIntent("today_plan_step2");
+            location.hash = "#/green/today";
+          }
+        }, ["Today’s Plan"]),
         el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
       ]),
     ]);
