@@ -3,7 +3,7 @@ import { appendLog, readLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 import { isStabilizedToday } from "../../state/handoff.js";
 
-const BUILD = "TP-13";
+const BUILD = "TP-14";
 const KEY = "praxis_today_plan_v5";
 
 function el(tag, attrs = {}, children = []) {
@@ -27,6 +27,44 @@ function el(tag, attrs = {}, children = []) {
 
 const nowISO = () => new Date().toISOString();
 function safeAppendLog(entry) { try { appendLog(entry); } catch {} }
+
+function startOfTodayMs() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+function readTodayLogSafe() {
+  try {
+    const all = readLog().slice(0, 200);
+    const cutoff = startOfTodayMs();
+    return all.filter(e => e && e.when && new Date(e.when).getTime() >= cutoff);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * ✅ "Act credit" today
+ * The spirit: if they already DID something today (movement/focus/step completion),
+ * unlock Step 3 without forcing them to re-do Step 2 in Today Plan.
+ *
+ * We keep this conservative and based on logs we already emit.
+ */
+function hasActCreditToday(todayLog) {
+  if (!todayLog || !todayLog.length) return false;
+
+  // 1) Any Move Forward session today
+  if (todayLog.some(e => e.kind === "move_forward")) return true;
+
+  // 2) Any Focus Sprint session today (if present in your app logs)
+  if (todayLog.some(e => e.kind === "focus_sprint")) return true;
+
+  // 3) If they already completed Step 2 (or Step 3) inside Today Plan today
+  if (todayLog.some(e => e.kind === "today_plan_step" && e.result === "done" && Number(e.step) >= 2)) return true;
+
+  return false;
+}
 
 function readState() {
   try {
@@ -54,7 +92,6 @@ const TEMPLATES = [
   { id: "recovery", label: "Recovery", a: "Eat / hydrate", b: "Shower or reset body", c: "Early night / low stimulation" },
 ];
 
-// Detect patterns like "2-min", "5-min", "10–25 min"
 function detectMinutes(text) {
   if (!text) return null;
   const t = String(text).toLowerCase();
@@ -90,8 +127,11 @@ export function renderTodayPlan() {
   const wrap = el("div", { class: "flowShell" });
   let state = readState();
 
-  // ✅ Handoff credit (log-derived, never locks user out)
+  const todayLog = readTodayLogSafe();
+
+  // ✅ credits
   const stabilizedToday = isStabilizedToday();
+  const actedToday = hasActCreditToday(todayLog);
 
   // timer state
   let running = false;
@@ -107,12 +147,14 @@ export function renderTodayPlan() {
   let lastOutcome = null;  // done | stuck | null
   let stopElapsedSec = 0;
 
-  // ✅ If they stabilized today, default to Step 2 view (but don't hard-mark Step 1 done)
-  if (stabilizedToday && state.doneStep < 1) {
+  // ✅ default step selection (never auto-marks completion)
+  if (actedToday && state.doneStep < 2) {
+    activeStep = 3;
+  } else if (stabilizedToday && state.doneStep < 1) {
     activeStep = 2;
   }
 
-  safeAppendLog({ kind: "today_plan_open", when: nowISO(), build: BUILD, stabilizedToday });
+  safeAppendLog({ kind: "today_plan_open", when: nowISO(), build: BUILD, stabilizedToday, actedToday });
 
   function stopTick() { if (tick) clearInterval(tick); tick = null; }
 
@@ -131,13 +173,13 @@ export function renderTodayPlan() {
     return s.c;
   }
 
-  // ✅ Gate: Step 2 is allowed if Step 1 done OR stabilized today.
-  // Step 3 still requires Step 2 done.
+  // ✅ gating:
+  // Step 2 allowed if Step 1 done OR stabilizedToday
+  // Step 3 allowed if Step 2 done OR actedToday
   function canStartStep(n) {
-    const step1Ok = state.doneStep >= 1 || stabilizedToday;
     if (n === 1) return true;
-    if (n === 2) return step1Ok;
-    if (n === 3) return state.doneStep >= 2;
+    if (n === 2) return state.doneStep >= 1 || stabilizedToday;
+    if (n === 3) return state.doneStep >= 2 || actedToday;
     return false;
   }
 
@@ -283,15 +325,17 @@ export function renderTodayPlan() {
   }
 
   function header() {
+    const notes = [];
+    if (stabilizedToday && state.doneStep < 1) notes.push("Stabilized today ✓ (Step 2 available)");
+    if (actedToday && state.doneStep < 2) notes.push("Acted today ✓ (Step 3 available)");
+
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["Today’s Plan"]),
         el("p", { class: "p" }, ["Three steps only. Do one step at a time."]),
         el("div", { class: "small" }, [`Build ${BUILD}`]),
-        (stabilizedToday && state.doneStep < 1)
-          ? el("div", { class: "small" }, ["Stabilized today ✓ (Step 2 available)"])
-          : null,
-      ].filter(Boolean)),
+        ...notes.map(n => el("div", { class: "small" }, [n])),
+      ]),
       el("div", { class: "flowMeta" }, [
         el("button", { class: "linkBtn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
       ])
