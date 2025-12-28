@@ -1,7 +1,8 @@
 // js/zones/yellow/stopUrge.js  (FULL REPLACEMENT)
 
-import { appendLog, readLog, grantStabilizeCreditToday, setNextIntent } from "../../storage.js";
+import { appendLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
+import { grantStabilizeCreditToday, setNextIntent } from "../../state/handoff.js";
 
 const BUILD = "SU-9";
 
@@ -9,8 +10,8 @@ function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (k === "class") node.className = v;
-    else if (k === "html") node.innerHTML = v;
-    else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (k.startsWith("on") && typeof v === "function")
+      node.addEventListener(k.slice(2).toLowerCase(), v);
     else node.setAttribute(k, v);
   }
   for (const child of children) {
@@ -21,7 +22,10 @@ function el(tag, attrs = {}, children = []) {
 }
 
 const nowISO = () => new Date().toISOString();
-function safeAppendLog(entry) { try { appendLog(entry); } catch {} }
+
+function safeAppendLog(entry) {
+  try { appendLog(entry); } catch {}
+}
 
 function copyToClipboard(text) {
   if (navigator.clipboard?.writeText) {
@@ -94,9 +98,6 @@ export function renderStopUrge() {
   let earlyStopElapsedSec = 0;
   let earlyStopReason = null; // "safe" | "bailed" | null
 
-  // keep UI clean: scripts are optional + collapsed by default
-  let showScripts = false;
-
   safeAppendLog({ kind: "stop_urge_open", when: nowISO(), build: BUILD });
 
   function stopTick() {
@@ -120,9 +121,6 @@ export function renderStopUrge() {
     stoppedEarly = false;
     earlyStopElapsedSec = 0;
     earlyStopReason = null;
-
-    // ✅ starting a real pause counts as “stabilize credit” for today
-    try { grantStabilizeCreditToday(); } catch {}
 
     durationMin = min;
     startAt = Date.now();
@@ -151,9 +149,6 @@ export function renderStopUrge() {
     const newRemaining = remaining + extraMin * 60 * 1000;
     durationMin = Math.ceil(newRemaining / (60 * 1000));
     endAt = Date.now() + newRemaining;
-
-    safeAppendLog({ kind: "stop_urge_extend", when: nowISO(), extraMin, minutesNow: durationMin, build: BUILD });
-
     rerender("running");
   }
 
@@ -175,7 +170,7 @@ export function renderStopUrge() {
       kind: "stop_urge",
       when: nowISO(),
       minutes: durationMin,
-      outcome, // "passed" | "still_present"
+      outcome,
       note,
       stoppedEarly,
       earlyStopReason,
@@ -186,8 +181,10 @@ export function renderStopUrge() {
       build: BUILD
     });
 
-    // ✅ any completed Stop the Urge counts as stabilize credit for today
-    try { grantStabilizeCreditToday(); } catch {}
+    // ✅ Stabilize credit when urge passes
+    if (outcome === "passed") {
+      try { grantStabilizeCreditToday(); } catch {}
+    }
   }
 
   function stopEarly() {
@@ -253,7 +250,7 @@ export function renderStopUrge() {
       el("div", { class: "btnRow" }, [
         el("button", { class: "btn", type: "button", onClick: () => extend(5) }, ["+5 min"]),
         el("button", { class: "btn", type: "button", onClick: () => extend(10) }, ["+10 min"]),
-        el("button", { class: "btn", type: "button", onClick: () => stopEarly() }, ["Stop"]),
+        el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"]),
       ]),
     ]);
   }
@@ -283,7 +280,7 @@ export function renderStopUrge() {
     ]);
 
     const variants = el("div", { class: "flowShell" }, [
-      el("div", { class: "badge" }, ["Options"]),
+      el("h2", { class: "h2" }, ["Options"]),
       el("p", { class: "small" }, [set.desc]),
       el("div", { class: "btnRow" }, set.variants.map((v, idx) =>
         el("button", {
@@ -295,6 +292,7 @@ export function renderStopUrge() {
     ]);
 
     return el("div", { class: "flowShell" }, [
+      el("h2", { class: "h2" }, ["Scripts"]),
       setButtons,
       preview,
       variants,
@@ -315,7 +313,12 @@ export function renderStopUrge() {
           el("button", {
             class: "btn",
             type: "button",
-            onClick: () => { earlyStopReason = "bailed"; rerender("pause_done"); }
+            onClick: () => {
+              // ✅ log it (don’t silently skip)
+              earlyStopReason = "bailed";
+              logOutcome("still_present", "Stopped early (still hot).");
+              rerender("logged");
+            }
           }, ["I’m still hot / about to act"]),
         ]),
         el("p", { class: "small", style: "margin-top:10px" }, ["Honesty helps Praxis guide you correctly."]),
@@ -386,21 +389,8 @@ export function renderStopUrge() {
 
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["When you’re ready"]),
-      el("p", { class: "p" }, ["Start a pause. Scripts are optional."]),
+      el("p", { class: "p" }, ["Start a pause. If needed, use a script."]),
     ]);
-  }
-
-  function scriptsToggleCard() {
-    return el("div", { class: "card cardPad" }, [
-      el("div", { class: "btnRow" }, [
-        el("button", {
-          class: "btn",
-          type: "button",
-          onClick: () => { showScripts = !showScripts; rerender(currentMode); }
-        }, [showScripts ? "Hide scripts" : "Scripts (optional)"]),
-      ]),
-      showScripts ? el("div", { class: "flowShell", style: "margin-top:10px" }, [scriptsPanel()]) : null
-    ].filter(Boolean));
   }
 
   function rerender(mode) {
@@ -408,14 +398,17 @@ export function renderStopUrge() {
     wrap.innerHTML = "";
     wrap.appendChild(header());
 
-    // Keep it tap → go: pause first, everything else optional/secondary.
-    wrap.appendChild(el("div", { class: "card cardPad" }, [
+    const pauseCard = el("div", { class: "card cardPad" }, [
       el("h2", { class: "h2" }, ["Pause"]),
       timerPanel(),
-    ]));
+    ]);
 
-    wrap.appendChild(statusCard(mode));
-    wrap.appendChild(scriptsToggleCard()); // ✅ collapsed by default
+    const status = statusCard(mode);
+    const scriptsCard = el("div", { class: "card cardPad" }, [scriptsPanel()]);
+
+    wrap.appendChild(pauseCard);
+    wrap.appendChild(status);
+    wrap.appendChild(scriptsCard);
 
     if (running) updateTimerUI();
   }
