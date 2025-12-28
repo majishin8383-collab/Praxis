@@ -1,8 +1,8 @@
 import { appendLog, readLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
-import { setNextIntent, isStabilizedToday } from "../../state/handoff.js";
+import { setNextIntent } from "../../state/handoff.js";
 
-const BUILD = "MF-2";
+const BUILD = "MF-2A";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -288,25 +288,17 @@ export function renderMoveForward() {
   function handoffCard() {
     if (mode !== "logged") return null;
 
-    const stabilized = (() => {
-      try { return isStabilizedToday(); } catch { return false; }
-    })();
-
-    // ✅ We always offer Today’s Plan next. We default to Step 2 intent because Move Forward = “Act”.
-    // If they did NOT stabilize today, still allow Today’s Plan, but it will open Step 1 unless other credit exists.
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["Next move"]),
       el("p", { class: "p" }, [
-        stabilized
-          ? "You stabilized today. Now convert this momentum into a simple 3-step plan (start Step 2)."
-          : "Convert this momentum into a simple 3-step plan. If you’re dysregulated, you can always run Calm first."
+        "Convert this momentum into a simple 3-step plan. You can always jump back to Calm / Stop / Emergency if needed."
       ]),
       el("div", { class: "btnRow" }, [
         el("button", {
           class: "btn btnPrimary",
           type: "button",
           onClick: () => {
-            // Move Forward = action already happened → default to Step 2 on Today Plan
+            // ✅ Move Forward = “Act” already happened → default Today Plan to Step 2
             setNextIntent("today_plan_step2");
             location.hash = "#/green/today";
           }
