@@ -1,10 +1,14 @@
 // js/zones/green/todayPlan.js  (FULL REPLACEMENT)
 
-import { appendLog, readLog, consumeNextIntent, hasStabilizeCreditToday } from "../../storage.js";
+import { appendLog, consumeNextIntent, hasStabilizeCreditToday } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "TP-13";
-const KEY = "praxis_today_plan_v6";
+const BUILD = "TP-14";
+
+// ✅ IMPORTANT: must match Direction’s writer key (your direction.js uses v5)
+const KEY_PRIMARY = "praxis_today_plan_v5";
+// Back-compat (if you accidentally saved under v6 previously)
+const KEY_FALLBACK = "praxis_today_plan_v6";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -24,25 +28,44 @@ function el(tag, attrs = {}, children = []) {
 }
 
 const nowISO = () => new Date().toISOString();
-function safeAppendLog(entry) { try { appendLog(entry); } catch {} }
+function safeAppendLog(entry) {
+  try {
+    appendLog(entry);
+  } catch {}
+}
+
+function normalizeState(s) {
+  const doneStep = Number(s?.doneStep);
+  return {
+    template: s?.template || "",
+    a: s?.a || "",
+    b: s?.b || "",
+    c: s?.c || "",
+    doneStep: Number.isFinite(doneStep) ? doneStep : 0,
+  };
+}
 
 function readState() {
+  // ✅ read primary key first (Direction writes here)
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return { template: "", a: "", b: "", c: "", doneStep: 0 };
-    const s = JSON.parse(raw);
-    return {
-      template: s.template || "",
-      a: s.a || "",
-      b: s.b || "",
-      c: s.c || "",
-      doneStep: Number.isFinite(s.doneStep) ? s.doneStep : 0,
-    };
-  } catch {
-    return { template: "", a: "", b: "", c: "", doneStep: 0 };
-  }
+    const raw = localStorage.getItem(KEY_PRIMARY);
+    if (raw) return normalizeState(JSON.parse(raw));
+  } catch {}
+
+  // Back-compat (if you wrote v6 before)
+  try {
+    const raw2 = localStorage.getItem(KEY_FALLBACK);
+    if (raw2) return normalizeState(JSON.parse(raw2));
+  } catch {}
+
+  return { template: "", a: "", b: "", c: "", doneStep: 0 };
 }
-function saveState(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} }
+
+function saveState(s) {
+  try {
+    localStorage.setItem(KEY_PRIMARY, JSON.stringify(s));
+  } catch {}
+}
 
 const TEMPLATES = [
   { id: "stability", label: "Stability", a: "2-min Calm", b: "5-min walk / movement", c: "One small maintenance task" },
@@ -76,6 +99,23 @@ function detectMinutes(text) {
   return null;
 }
 
+function isBlankPlan(state) {
+  const a = (state.a || "").trim();
+  const b = (state.b || "").trim();
+  const c = (state.c || "").trim();
+  return !a && !b && !c;
+}
+
+function pickDefaultTemplateId(stabilizedToday) {
+  // ✅ default is always template-based
+  // If stabilized today, bias to Stability. Otherwise Progress as default “don’t drift”.
+  return stabilizedToday ? "stability" : "progress";
+}
+
+function getTemplateById(id) {
+  return TEMPLATES.find((t) => t.id === id) || null;
+}
+
 export function renderTodayPlan() {
   const wrap = el("div", { class: "flowShell" });
 
@@ -91,24 +131,45 @@ export function renderTodayPlan() {
 
   // UI state
   let statusMode = "idle"; // idle | running | stopped_early | time_complete | offer_continue | logged
-  let lastOutcome = null;  // done | stuck | null
+  let lastOutcome = null; // done | stuck | null
   let stopElapsedSec = 0;
 
-  // moved-out “options”
+  // “Change template” panel (collapsed by default)
   let showTemplates = false;
 
-  // ✅ soft handoff / credit
+  // ✅ handoff / credit
   const intent = consumeNextIntent(); // one-time
   const stabilizedToday = hasStabilizeCreditToday();
 
+  // ✅ Always base on a template by default (unless user already has a plan)
+  // - If plan is blank: seed from a default template
+  // - If plan has steps but template missing: infer as "custom" (no overwrite)
+  if (isBlankPlan(state)) {
+    const defaultId = pickDefaultTemplateId(stabilizedToday);
+    const t = getTemplateById(defaultId);
+    if (t) {
+      state = { ...state, template: t.id, a: t.a, b: t.b, c: t.c };
+      saveState(state);
+    }
+  } else {
+    // Keep user content; don’t overwrite. Just ensure template is set.
+    if (!state.template) {
+      state = { ...state, template: "custom" };
+      saveState(state);
+    }
+  }
+
   // If they stabilized today (or explicit intent), default to Step 2 without auto-marking Step 1 done.
-  if ((intent === "today_plan_step2" || stabilizedToday) && (state.doneStep < 1)) {
+  if ((intent === "today_plan_step2" || stabilizedToday) && state.doneStep < 1) {
     activeStep = 2;
   }
 
-  safeAppendLog({ kind: "today_plan_open", when: nowISO(), build: BUILD, intent: intent || null, stabilizedToday });
+  safeAppendLog({ kind: "today_plan_open", when: nowISO(), build: BUILD, intent: intent || null, stabilizedToday, template: state.template || null });
 
-  function stopTick() { if (tick) clearInterval(tick); tick = null; }
+  function stopTick() {
+    if (tick) clearInterval(tick);
+    tick = null;
+  }
 
   function steps() {
     return {
@@ -125,7 +186,7 @@ export function renderTodayPlan() {
     return s.c;
   }
 
-  // ✅ Step 2 allowed if Step 1 done OR stabilizedToday
+  // Step 2 allowed if Step 1 done OR stabilizedToday
   function canStartStep(n) {
     if (n === 1) return true;
     if (n === 2) return state.doneStep >= 1 || stabilizedToday;
@@ -148,7 +209,6 @@ export function renderTodayPlan() {
     if (!canStartStep(activeStep)) return;
 
     liveDurationMin = detectMinutes(txt) ?? 10;
-
     running = true;
     lastOutcome = null;
     startAt = Date.now();
@@ -161,7 +221,7 @@ export function renderTodayPlan() {
       minutes: liveDurationMin,
       step: activeStep,
       stepText: txt,
-      build: BUILD
+      build: BUILD,
     });
 
     stopTick();
@@ -195,7 +255,7 @@ export function renderTodayPlan() {
       minutes: liveDurationMin,
       step: activeStep,
       stepText: stepText(activeStep),
-      build: BUILD
+      build: BUILD,
     });
 
     stopTick();
@@ -222,7 +282,6 @@ export function renderTodayPlan() {
 
     stopTick();
     running = false;
-
     stopElapsedSec = Math.max(0, Math.round(elapsedMs / 1000));
 
     safeAppendLog({
@@ -232,7 +291,7 @@ export function renderTodayPlan() {
       minutesPlanned: liveDurationMin,
       elapsedSec: stopElapsedSec,
       step: activeStep,
-      build: BUILD
+      build: BUILD,
     });
 
     statusMode = "stopped_early";
@@ -249,20 +308,28 @@ export function renderTodayPlan() {
       stepText: stepText(activeStep),
       minutes: liveDurationMin,
       result,
-      build: BUILD
+      build: BUILD,
     });
   }
 
   function applyTemplate(t) {
-    state = { ...state, template: t.id, a: t.a, b: t.b, c: t.c };
+    // ✅ Changing template should reset progress (clean mental model)
+    state = { ...state, template: t.id, a: t.a, b: t.b, c: t.c, doneStep: 0 };
     saveState(state);
+    activeStep = 1;
     statusMode = "idle";
+    showTemplates = false;
     rerender();
   }
 
   function clearAll() {
+    // ✅ Clearing should also re-seed a default template (never “blank optional templates” again)
     state = { template: "", a: "", b: "", c: "", doneStep: 0 };
+    const defaultId = pickDefaultTemplateId(stabilizedToday);
+    const t = getTemplateById(defaultId);
+    if (t) state = { ...state, template: t.id, a: t.a, b: t.b, c: t.c, doneStep: 0 };
     saveState(state);
+    activeStep = 1;
     statusMode = "idle";
     rerender();
   }
@@ -273,32 +340,43 @@ export function renderTodayPlan() {
         el("h1", { class: "h1" }, ["Today’s Plan"]),
         el("p", { class: "p" }, ["Three steps only. Do one step at a time."]),
         el("div", { class: "small" }, [`Build ${BUILD}`]),
-        stabilizedToday && state.doneStep < 1
-          ? el("div", { class: "small" }, ["Stabilized today ✓ (Step 2 available)"])
-          : null
+        stabilizedToday && state.doneStep < 1 ? el("div", { class: "small" }, ["Stabilized today ✓ (Step 2 available)"]) : null,
       ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
         el("button", { class: "linkBtn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
-      ])
+      ]),
     ]);
   }
 
-  function templatesToggleCard() {
+  function changeTemplateCard() {
+    const currentLabel =
+      state.template && state.template !== "custom"
+        ? (getTemplateById(state.template)?.label || "Template")
+        : "Custom";
+
     return el("div", { class: "card cardPad" }, [
+      el("div", { class: "badge" }, ["Plan type"]),
+      el("p", { class: "small" }, [`Current: ${currentLabel}`]),
       el("div", { class: "btnRow" }, [
         el("button", {
           class: "btn",
           type: "button",
-          onClick: () => { showTemplates = !showTemplates; rerender(); }
-        }, [showTemplates ? "Hide templates" : "Templates (optional)"]),
-        el("button", { class: "btn", type: "button", onClick: clearAll }, ["Clear"]),
+          onClick: () => {
+            showTemplates = !showTemplates;
+            rerender();
+          },
+        }, [showTemplates ? "Hide" : "Change template"]),
+        el("button", { class: "btn", type: "button", onClick: clearAll }, ["Reset plan"]),
       ]),
-      showTemplates ? el("div", { class: "flowShell", style: "margin-top:10px" }, [
-        el("div", { class: "badge" }, ["Tap to fill"]),
-        el("div", { class: "btnRow" }, TEMPLATES.map(t =>
-          el("button", { class: "btn", type: "button", onClick: () => applyTemplate(t) }, [t.label])
-        )),
-      ]) : null
+      showTemplates
+        ? el("div", { class: "flowShell", style: "margin-top:10px" }, [
+            el("div", { class: "badge" }, ["Templates"]),
+            el("p", { class: "small" }, ["Switching template resets step progress (clean slate)."]),
+            el("div", { class: "btnRow" }, TEMPLATES.map((t) =>
+              el("button", { class: "btn", type: "button", onClick: () => applyTemplate(t) }, [t.label])
+            )),
+          ])
+        : null,
     ].filter(Boolean));
   }
 
@@ -315,9 +393,11 @@ export function renderTodayPlan() {
           ";",
         onInput: (e) => {
           state[key] = e.target.value;
+          // if they edit a template, it becomes custom (but we do NOT wipe anything)
+          if (state.template && state.template !== "custom") state.template = "custom";
           saveState(state);
-        }
-      }, [])
+        },
+      }, []),
     ]);
   }
 
@@ -391,7 +471,7 @@ export function renderTodayPlan() {
         el("div", { class: "btnRow" }, [
           el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"]),
         ]),
-      ])
+      ]),
     ]);
   }
 
@@ -462,7 +542,6 @@ export function renderTodayPlan() {
     if (statusMode === "logged") {
       const good = lastOutcome === "done";
       const nextStep = Math.min(3, activeStep + 1);
-
       return el("div", { class: "card cardPad" }, [
         el("div", { class: "badge" }, ["Next move"]),
         el("p", { class: "p" }, [
@@ -473,10 +552,10 @@ export function renderTodayPlan() {
         el("div", { class: "btnRow" }, [
           good && activeStep < 3
             ? el("button", {
-              class: "btn btnPrimary",
-              type: "button",
-              onClick: () => { activeStep = nextStep; statusMode = "idle"; rerender(); }
-            }, [`Step ${nextStep}`])
+                class: "btn btnPrimary",
+                type: "button",
+                onClick: () => { activeStep = nextStep; statusMode = "idle"; rerender(); }
+              }, [`Step ${nextStep}`])
             : el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
           el("button", { class: "btn", type: "button", onClick: () => { statusMode = "idle"; rerender(); } }, ["Back to plan"]),
         ]),
@@ -489,7 +568,7 @@ export function renderTodayPlan() {
   function rerender() {
     wrap.innerHTML = "";
     wrap.appendChild(header());
-    wrap.appendChild(templatesToggleCard()); // ✅ moved-out “options”
+    wrap.appendChild(changeTemplateCard()); // ✅ not “optional templates” — it’s plan type
     wrap.appendChild(planCard());
     wrap.appendChild(primaryActionCard());
 
