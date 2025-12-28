@@ -1,29 +1,45 @@
+/*!
+ * Praxis
+ * © 2025 Joseph Satmary. All rights reserved.
+ * Public demo does not grant a license to use, copy, modify, or distribute.
+ */
+
 // js/state/handoff.js  (FULL REPLACEMENT)
-import { readLog, appendLog } from "../storage.js";
+
+import {
+  readLog,
+  appendLog,
+  hasStabilizeCreditToday as _hasStabilizeCreditToday,
+  grantStabilizeCreditToday as _grantStabilizeCreditToday,
+  clearStabilizeCredit as _clearStabilizeCredit,
+  setNextIntent as _setNextIntent,
+  consumeNextIntent as _consumeNextIntent,
+} from "../storage.js";
 
 /**
  * Step A (minimal): shared "handoff" state.
+ *
  * Purpose:
  * - Provide a single, stable way to answer: "Has the user stabilized today?"
  * - Keep it log-derived (no locking, no forcing, no UI).
  *
- * "Stabilized" = they did ANY of:
+ * "Stabilized" (log-derived) = they did ANY of:
  * - Calm (kind: "calm")
- * - Stop the Urge session (kind: "stop_urge")  // regardless of outcome; they still paused
+ * - Stop the Urge session (kind: "stop_urge") // regardless of outcome; they still paused
  * - Move Forward session (kind: "move_forward") // momentum counts
  *
- * Safety is tracked separately via emergency_open.
+ * NOTE:
+ * We also maintain a lightweight "credit" flag via storage.js (hasStabilizeCreditToday)
+ * which can be granted automatically on log append. Both can coexist safely.
  */
 
-const BUILD = "HANDOFF-1";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+const BUILD = "HANDOFF-2";
 
 function nowISO() {
   return new Date().toISOString();
 }
 
-function safeReadLog(limit = 200) {
+function safeReadLog(limit = 250) {
   try {
     const l = readLog();
     return Array.isArray(l) ? l.slice(0, limit) : [];
@@ -64,20 +80,17 @@ function newestToday(log, kinds) {
 }
 
 /**
- * ✅ REQUIRED EXPORT (fixes your route error):
- * Returns true if user has stabilized at any point today.
+ * ✅ REQUIRED EXPORT:
+ * Returns true if user has stabilized at any point today (log-derived).
  */
 export function isStabilizedToday() {
   const log = safeReadLog(250);
-
-  // Any of these counts as "Step 1 done" in an adaptive flow sense.
   const hit = newestToday(log, ["calm", "stop_urge", "move_forward"]);
   return !!hit;
 }
 
 /**
  * Returns the most recent stabilization event today (or null).
- * Useful for "why did we skip Step 1?"
  */
 export function getStabilizationEventToday() {
   const log = safeReadLog(250);
@@ -85,7 +98,6 @@ export function getStabilizationEventToday() {
 }
 
 /**
- * Convenience: what *type* of stabilization happened today?
  * Returns: "calm" | "stop_urge" | "move_forward" | null
  */
 export function getStabilizationSourceToday() {
@@ -94,8 +106,7 @@ export function getStabilizationSourceToday() {
 }
 
 /**
- * Safety flag: did they open Emergency recently today?
- * (We keep it separate from "stabilized", because emergency is a different class of action.)
+ * Safety flag: did they open Emergency today?
  */
 export function isSafetyActiveToday() {
   const log = safeReadLog(250);
@@ -104,9 +115,7 @@ export function isSafetyActiveToday() {
 }
 
 /**
- * Optional helper: if a screen wants to explicitly mark a handoff moment
- * without changing UI logic, it can call this.
- * (This is NOT required for Step A to work; Step A works log-only.)
+ * Optional helper: log a handoff moment (analytics only).
  */
 export function markHandoff(tag, data = {}) {
   safeAppend({
@@ -119,13 +128,11 @@ export function markHandoff(tag, data = {}) {
 }
 
 /**
- * Optional helper: some flows may want to consider "stabilized recently"
- * (e.g., within the last N minutes) instead of "today".
+ * Optional helper: stabilized within last N minutes (log-derived).
  */
 export function isStabilizedWithinMinutes(minutes = 120) {
   const log = safeReadLog(250);
   const cutoff = Date.now() - Math.max(1, minutes) * 60 * 1000;
-
   for (const e of log) {
     if (!e || !e.kind || !e.when) continue;
     if (!["calm", "stop_urge", "move_forward"].includes(e.kind)) continue;
@@ -133,4 +140,49 @@ export function isStabilizedWithinMinutes(minutes = 120) {
     if (t && t >= cutoff) return true;
   }
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// ✅ Exports required by newer adaptive flows (delegated to storage.js)
+// ---------------------------------------------------------------------------
+
+/**
+ * Credit-based: true if stabilize credit was granted today (storage flag).
+ * This is "lighter" and faster than scanning logs, and can be granted on appendLog().
+ */
+export function hasStabilizeCreditToday() {
+  try {
+    return _hasStabilizeCreditToday();
+  } catch {
+    return false;
+  }
+}
+
+export function grantStabilizeCreditToday() {
+  try {
+    _grantStabilizeCreditToday();
+  } catch {}
+}
+
+export function clearStabilizeCredit() {
+  try {
+    _clearStabilizeCredit();
+  } catch {}
+}
+
+/**
+ * One-time routing intent between tools.
+ */
+export function setNextIntent(intent) {
+  try {
+    _setNextIntent(intent);
+  } catch {}
+}
+
+export function consumeNextIntent(maxAgeMinutes = 30) {
+  try {
+    return _consumeNextIntent(maxAgeMinutes);
+  } catch {
+    return null;
+  }
 }
