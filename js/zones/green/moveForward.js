@@ -1,7 +1,8 @@
 // js/zones/green/moveForward.js  (FULL REPLACEMENT)
 
-import { appendLog, readLog, grantStabilizeCreditToday, setNextIntent } from "../../storage.js";
+import { appendLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
+import { grantStabilizeCreditToday, setNextIntent } from "../../state/handoff.js";
 
 const BUILD = "MF-6";
 
@@ -90,8 +91,14 @@ export function renderMoveForward() {
 
   safeAppendLog({ kind: "move_forward_open", when: nowISO(), build: BUILD });
 
-  function stopTick() { if (tick) clearInterval(tick); tick = null; }
-  function getSelected() { return LADDERS.find(x => x.id === selectedLadderId) || LADDERS[0]; }
+  function stopTick() {
+    if (tick) clearInterval(tick);
+    tick = null;
+  }
+
+  function getSelected() {
+    return LADDERS.find(x => x.id === selectedLadderId) || LADDERS[0];
+  }
 
   function updateTimerUI() {
     const remaining = clamp(endAt - Date.now(), 0, durationMin * 60 * 1000);
@@ -109,6 +116,8 @@ export function renderMoveForward() {
 
   function selectAndAdvance(id) {
     selectedLadderId = id;
+    const ladder = getSelected();
+    durationMin = ladder.minutes;
     mode = "selected";
     rerender();
   }
@@ -116,7 +125,7 @@ export function renderMoveForward() {
   function startSelected() {
     const ladder = getSelected();
 
-    // counts as stabilizing credit
+    // ✅ starting Move Forward counts as stabilizing credit for today
     try { grantStabilizeCreditToday(); } catch {}
 
     running = true;
@@ -147,7 +156,9 @@ export function renderMoveForward() {
         running = false;
         mode = "done";
         rerender();
-      } else updateTimerUI();
+      } else {
+        updateTimerUI();
+      }
     }, 250);
 
     mode = "running";
@@ -160,7 +171,15 @@ export function renderMoveForward() {
     durationMin = Math.ceil(newRemaining / (60 * 1000));
     endAt = Date.now() + newRemaining;
 
-    safeAppendLog({ kind: "move_forward_extend", when: nowISO(), ladderId: selectedLadderId, extraMin, minutesNow: durationMin, build: BUILD });
+    safeAppendLog({
+      kind: "move_forward_extend",
+      when: nowISO(),
+      ladderId: selectedLadderId,
+      extraMin,
+      minutesNow: durationMin,
+      build: BUILD
+    });
+
     rerender();
   }
 
@@ -194,7 +213,7 @@ export function renderMoveForward() {
     lastOutcome = outcome;
     const ladder = getSelected();
 
-    // any attempt counts as stabilizing credit
+    // ✅ any Move Forward attempt counts as stabilize credit for today
     try { grantStabilizeCreditToday(); } catch {}
 
     safeAppendLog({
@@ -203,17 +222,12 @@ export function renderMoveForward() {
       ladderId: ladder.id,
       ladderTitle: ladder.title,
       minutes: durationMin,
-      outcome,
+      outcome, // "done" | "stuck"
       stoppedEarly,
       earlyStopReason,
       earlyStopElapsedSec,
       build: BUILD
     });
-  }
-
-  function recentLogs() {
-    // (You said history isn’t useful; we’ll remove globally in the next audit step.)
-    return null;
   }
 
   function header() {
@@ -235,7 +249,11 @@ export function renderMoveForward() {
       el("p", { class: "small" }, ["Tap one. You’ll start on the next screen."]),
       el("div", { class: "flowShell", style: "margin-top:10px" },
         LADDERS.map(l =>
-          el("button", { class: "actionTile", type: "button", onClick: () => selectAndAdvance(l.id) }, [
+          el("button", {
+            class: "actionTile",
+            type: "button",
+            onClick: () => selectAndAdvance(l.id),
+          }, [
             el("div", { class: "tileTop" }, [
               el("div", {}, [
                 el("div", { class: "tileTitle" }, [l.title]),
@@ -298,8 +316,16 @@ export function renderMoveForward() {
         el("div", { class: "badge" }, ["Stopped early"]),
         el("p", { class: "p" }, [`You moved for ${earlyStopElapsedSec}s. Why are you stopping?`]),
         el("div", { class: "btnRow" }, [
-          el("button", { class: "btn btnPrimary", type: "button", onClick: () => { earlyStopReason = "safe"; mode = "done"; rerender(); } }, ["I’m okay / situation changed"]),
-          el("button", { class: "btn", type: "button", onClick: () => { earlyStopReason = "bailed"; logOutcome("stuck"); mode = "logged"; rerender(); } }, ["Still stuck / resisting it"]),
+          el("button", {
+            class: "btn btnPrimary",
+            type: "button",
+            onClick: () => { earlyStopReason = "safe"; mode = "done"; rerender(); }
+          }, ["I’m okay / situation changed"]),
+          el("button", {
+            class: "btn",
+            type: "button",
+            onClick: () => { earlyStopReason = "bailed"; logOutcome("stuck"); mode = "logged"; rerender(); }
+          }, ["Still stuck / resisting it"]),
         ]),
       ]);
     }
@@ -309,8 +335,16 @@ export function renderMoveForward() {
         el("div", { class: "badge" }, ["Check-out"]),
         el("p", { class: "p" }, ["What’s true right now?"]),
         el("div", { class: "btnRow" }, [
-          el("button", { class: "btn btnPrimary", type: "button", onClick: () => { logOutcome("done"); mode = "logged"; rerender(); } }, ["I did it"]),
-          el("button", { class: "btn", type: "button", onClick: () => { logOutcome("stuck"); mode = "logged"; rerender(); } }, ["Still stuck"]),
+          el("button", {
+            class: "btn btnPrimary",
+            type: "button",
+            onClick: () => { logOutcome("done"); mode = "logged"; rerender(); }
+          }, ["I did it"]),
+          el("button", {
+            class: "btn",
+            type: "button",
+            onClick: () => { logOutcome("stuck"); mode = "logged"; rerender(); }
+          }, ["Still stuck"]),
         ]),
       ]);
     }
@@ -320,10 +354,11 @@ export function renderMoveForward() {
       return el("div", { class: "card cardPad" }, [
         el("div", { class: "badge" }, ["Next move"]),
         el("p", { class: "p" }, [
-          done ? "Good. Turn momentum into a simple plan."
-               : earlyStopReason === "bailed"
-               ? "Okay. Don’t force it. Change state, then choose again."
-               : "Okay. Change state, then choose again."
+          done
+            ? "Good. Turn momentum into a simple plan."
+            : earlyStopReason === "bailed"
+            ? "Okay. Don’t force it. Change state, then choose again."
+            : "Okay. Change state, then choose again."
         ]),
         el("div", { class: "btnRow" }, [
           done
@@ -350,7 +385,11 @@ export function renderMoveForward() {
     wrap.innerHTML = "";
     wrap.appendChild(header());
 
-    if (mode === "pick") { wrap.appendChild(pickerCard()); return; }
+    if (mode === "pick") {
+      wrap.appendChild(pickerCard());
+      return;
+    }
+
     if (mode === "selected") wrap.appendChild(selectedCard());
     if (mode === "running") wrap.appendChild(runningCard());
 
