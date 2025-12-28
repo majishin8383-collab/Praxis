@@ -1,17 +1,19 @@
 // js/zones/yellow/stopUrge.js  (FULL REPLACEMENT)
 
-import { appendLog } from "../../storage.js";
+import { appendLog, grantStabilizeCreditToday, setNextIntent } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
-import { grantStabilizeCreditToday, setNextIntent } from "../../state/handoff.js";
 
 const BUILD = "SU-9";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
+    if (v === null || v === undefined || v === false) continue;
     if (k === "class") node.className = v;
+    else if (k === "html") node.innerHTML = v;
     else if (k.startsWith("on") && typeof v === "function")
       node.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (v === true) node.setAttribute(k, "");
     else node.setAttribute(k, v);
   }
   for (const child of children) {
@@ -81,17 +83,23 @@ const SCRIPT_SETS = [
 export function renderStopUrge() {
   const wrap = el("div", { class: "flowShell" });
 
+  // timer state
   let running = false;
   let durationMin = 2;
   let startAt = 0;
   let endAt = 0;
   let tick = null;
 
+  // scripts state (optional)
+  let showScripts = false;
   let selectedSetId = "neutral";
   let selectedVariantIndex = 0;
 
-  let currentMode = "idle"; // "idle" | "running" | "pause_done" | "early_stop" | "logged"
-  let lastOutcome = null;   // "passed" | "still_present" | null
+  // mode state
+  // idle -> running -> pause_done -> logged
+  // idle -> running -> early_stop -> (pause_done or logged)
+  let mode = "idle"; // "idle" | "running" | "pause_done" | "early_stop" | "logged"
+  let lastOutcome = null; // "passed" | "still_present" | null
 
   // early stop telemetry
   let stoppedEarly = false;
@@ -112,6 +120,17 @@ export function renderStopUrge() {
     const fill = wrap.querySelector("[data-progress-fill]");
     if (readout) readout.textContent = formatMMSS(remaining);
     if (fill) fill.style.width = `${pct.toFixed(1)}%`;
+  }
+
+  function selectedScriptText() {
+    const set = SCRIPT_SETS.find(s => s.id === selectedSetId) || SCRIPT_SETS[0];
+    return {
+      setId: set.id,
+      setTitle: set.title,
+      desc: set.desc,
+      optionIndex: selectedVariantIndex,
+      text: set.variants[selectedVariantIndex] || set.variants[0]
+    };
   }
 
   function startPause(min) {
@@ -135,13 +154,15 @@ export function renderStopUrge() {
       if (remaining <= 0) {
         stopTick();
         running = false;
-        rerender("pause_done");
+        mode = "pause_done";
+        rerender();
       } else {
         updateTimerUI();
       }
     }, 250);
 
-    rerender("running");
+    mode = "running";
+    rerender();
   }
 
   function extend(extraMin) {
@@ -149,21 +170,14 @@ export function renderStopUrge() {
     const newRemaining = remaining + extraMin * 60 * 1000;
     durationMin = Math.ceil(newRemaining / (60 * 1000));
     endAt = Date.now() + newRemaining;
-    rerender("running");
-  }
 
-  function selectedScriptText() {
-    const set = SCRIPT_SETS.find(s => s.id === selectedSetId) || SCRIPT_SETS[0];
-    return {
-      setId: set.id,
-      setTitle: set.title,
-      optionIndex: selectedVariantIndex,
-      text: set.variants[selectedVariantIndex] || set.variants[0]
-    };
+    safeAppendLog({ kind: "stop_urge_extend", when: nowISO(), extraMin, minutesNow: durationMin, build: BUILD });
+    rerender();
   }
 
   function logOutcome(outcome, note) {
     lastOutcome = outcome;
+
     const s = selectedScriptText();
 
     safeAppendLog({
@@ -181,7 +195,7 @@ export function renderStopUrge() {
       build: BUILD
     });
 
-    // ✅ Stabilize credit when urge passes
+    // ✅ stabilize credit only when the urge passes (soft guidance)
     if (outcome === "passed") {
       try { grantStabilizeCreditToday(); } catch {}
     }
@@ -197,6 +211,7 @@ export function renderStopUrge() {
 
     stoppedEarly = true;
     earlyStopElapsedSec = Math.max(0, Math.round(elapsedMs / 1000));
+    earlyStopReason = null;
 
     safeAppendLog({
       kind: "stop_urge_stop",
@@ -207,7 +222,8 @@ export function renderStopUrge() {
       build: BUILD
     });
 
-    rerender("early_stop");
+    mode = "early_stop";
+    rerender();
   }
 
   function header() {
@@ -227,13 +243,13 @@ export function renderStopUrge() {
     ]);
   }
 
-  function timerPanel() {
+  function pauseCard() {
     if (!running) {
-      return el("div", { class: "flowShell" }, [
-        el("div", { class: "badge" }, ["Default pause: 2 minutes"]),
+      return el("div", { class: "card cardPad" }, [
+        el("div", { class: "badge" }, ["Pause"]),
         el("p", { class: "p" }, ["Don’t send anything during the pause. Let the urge peak and fall."]),
         el("div", { class: "btnRow" }, [
-          el("button", { class: "btn btnPrimary", type: "button", onClick: () => startPause(2) }, ["Start 2-minute pause"]),
+          el("button", { class: "btn btnPrimary", type: "button", onClick: () => startPause(2) }, ["Start 2 min"]),
           el("button", { class: "btn", type: "button", onClick: () => startPause(5) }, ["Start 5 min"]),
           el("button", { class: "btn", type: "button", onClick: () => startPause(10) }, ["Start 10 min"]),
         ]),
@@ -241,65 +257,78 @@ export function renderStopUrge() {
     }
 
     const remaining = clamp(endAt - Date.now(), 0, durationMin * 60 * 1000);
-    return el("div", { class: "timerBox" }, [
-      el("div", { class: "badge" }, [`Pause active • ${durationMin} min window`]),
-      el("div", { class: "timerReadout", "data-timer-readout": "1" }, [formatMMSS(remaining)]),
-      el("div", { class: "progressBar" }, [
-        el("div", { class: "progressFill", "data-progress-fill": "1" }, []),
-      ]),
-      el("div", { class: "btnRow" }, [
-        el("button", { class: "btn", type: "button", onClick: () => extend(5) }, ["+5 min"]),
-        el("button", { class: "btn", type: "button", onClick: () => extend(10) }, ["+10 min"]),
-        el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"]),
-      ]),
+    return el("div", { class: "card cardPad" }, [
+      el("div", { class: "badge" }, [`Pause active • ${durationMin} min`]),
+      el("div", { class: "timerBox" }, [
+        el("div", { class: "timerReadout", "data-timer-readout": "1" }, [formatMMSS(remaining)]),
+        el("div", { class: "progressBar" }, [
+          el("div", { class: "progressFill", "data-progress-fill": "1" }, []),
+        ]),
+        el("div", { class: "btnRow" }, [
+          el("button", { class: "btn", type: "button", onClick: () => extend(5) }, ["+5 min"]),
+          el("button", { class: "btn", type: "button", onClick: () => extend(10) }, ["+10 min"]),
+          el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"]),
+        ]),
+      ])
     ]);
   }
 
-  function scriptsPanel() {
-    const set = SCRIPT_SETS.find(s => s.id === selectedSetId) || SCRIPT_SETS[0];
-    const text = set.variants[selectedVariantIndex] || set.variants[0];
+  function scriptsCard() {
+    const s = selectedScriptText();
 
-    const setButtons = el("div", { class: "btnRow" }, SCRIPT_SETS.map(s =>
+    if (!showScripts) {
+      return el("div", { class: "card cardPad" }, [
+        el("div", { class: "badge" }, ["Scripts (optional)"]),
+        el("p", { class: "small" }, ["Use these only if you need words. Otherwise: pause and do nothing."]),
+        el("div", { class: "btnRow" }, [
+          el("button", { class: "btn", type: "button", onClick: () => { showScripts = true; rerender(); } }, ["Open scripts"]),
+        ]),
+      ]);
+    }
+
+    const setButtons = el("div", { class: "btnRow" }, SCRIPT_SETS.map(set =>
       el("button", {
         class: "btn",
         type: "button",
-        onClick: () => { selectedSetId = s.id; selectedVariantIndex = 0; rerender(currentMode); }
-      }, [s.title])
+        onClick: () => { selectedSetId = set.id; selectedVariantIndex = 0; rerender(); }
+      }, [set.title])
     ));
 
-    const preview = el("div", {
-      class: "card cardPad",
-      style: "background:rgba(255,255,255,.04);border:1px solid var(--line);"
-    }, [
-      el("div", { class: "badge" }, ["Preview"]),
-      el("p", { class: "p", style: "margin-top:8px;font-weight:800;color:var(--text);" }, [text]),
-      el("div", { class: "btnRow" }, [
-        el("button", { class: "btn btnPrimary", type: "button", onClick: () => copyToClipboard(text) }, ["Copy this"]),
-      ]),
-      el("p", { class: "small", style: "margin-top:8px" }, ["If copy is blocked on mobile, it will pop up so you can copy manually."])
-    ]);
-
-    const variants = el("div", { class: "flowShell" }, [
-      el("h2", { class: "h2" }, ["Options"]),
-      el("p", { class: "small" }, [set.desc]),
-      el("div", { class: "btnRow" }, set.variants.map((v, idx) =>
+    const optionButtons = el("div", { class: "btnRow" }, (SCRIPT_SETS.find(x => x.id === selectedSetId) || SCRIPT_SETS[0])
+      .variants
+      .map((_, idx) =>
         el("button", {
           class: "btn",
           type: "button",
-          onClick: () => { selectedVariantIndex = idx; rerender(currentMode); }
+          onClick: () => { selectedVariantIndex = idx; rerender(); }
         }, [`Option ${idx + 1}`])
-      )),
-    ]);
+      )
+    );
 
-    return el("div", { class: "flowShell" }, [
-      el("h2", { class: "h2" }, ["Scripts"]),
+    return el("div", { class: "card cardPad" }, [
+      el("div", { class: "badge" }, ["Scripts"]),
+      el("p", { class: "small" }, [s.desc]),
       setButtons,
-      preview,
-      variants,
+      el("div", {
+        class: "card cardPad",
+        style: "margin-top:10px;background:rgba(255,255,255,.04);border:1px solid var(--line);"
+      }, [
+        el("div", { class: "badge" }, ["Copy-ready"]),
+        el("p", { class: "p", style: "margin-top:8px;font-weight:800;color:var(--text);" }, [s.text]),
+        el("div", { class: "btnRow" }, [
+          el("button", { class: "btn btnPrimary", type: "button", onClick: () => copyToClipboard(s.text) }, ["Copy"]),
+          el("button", { class: "btn", type: "button", onClick: () => { showScripts = false; rerender(); } }, ["Close"]),
+        ]),
+        el("p", { class: "small", style: "margin-top:8px" }, ["If copy is blocked on mobile, it will pop up so you can copy manually."])
+      ]),
+      el("div", { style: "margin-top:10px" }, [
+        el("div", { class: "badge" }, ["Options"]),
+        optionButtons,
+      ]),
     ]);
   }
 
-  function statusCard(mode) {
+  function statusCard() {
     if (mode === "early_stop") {
       return el("div", { class: "card cardPad" }, [
         el("div", { class: "badge" }, ["Stopped early"]),
@@ -308,16 +337,17 @@ export function renderStopUrge() {
           el("button", {
             class: "btn btnPrimary",
             type: "button",
-            onClick: () => { earlyStopReason = "safe"; rerender("pause_done"); }
+            onClick: () => { earlyStopReason = "safe"; mode = "pause_done"; rerender(); }
           }, ["It dropped / situation ended"]),
           el("button", {
             class: "btn",
             type: "button",
             onClick: () => {
-              // ✅ log it (don’t silently skip)
+              // ✅ IMPORTANT: this must log (previous build didn’t)
               earlyStopReason = "bailed";
-              logOutcome("still_present", "Stopped early (still hot).");
-              rerender("logged");
+              logOutcome("still_present", "Stopped early — urge still present.");
+              mode = "logged";
+              rerender();
             }
           }, ["I’m still hot / about to act"]),
         ]),
@@ -333,12 +363,12 @@ export function renderStopUrge() {
           el("button", {
             class: "btn btnPrimary",
             type: "button",
-            onClick: () => { logOutcome("passed", "Urge passed."); rerender("logged"); }
+            onClick: () => { logOutcome("passed", "Urge passed."); mode = "logged"; rerender(); }
           }, ["Urge passed"]),
           el("button", {
             class: "btn",
             type: "button",
-            onClick: () => { logOutcome("still_present", "Urge still present."); rerender("logged"); }
+            onClick: () => { logOutcome("still_present", "Urge still present."); mode = "logged"; rerender(); }
           }, ["Still present"]),
         ]),
       ]);
@@ -382,37 +412,32 @@ export function renderStopUrge() {
             : el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Back to Reset"]),
         ].filter(Boolean)),
         el("div", { class: "btnRow" }, [
-          el("button", { class: "btn", type: "button", onClick: () => rerender("idle") }, ["Run again"]),
+          el("button", {
+            class: "btn",
+            type: "button",
+            onClick: () => { mode = "idle"; lastOutcome = null; rerender(); }
+          }, ["Run again"]),
         ]),
       ]);
     }
 
+    // idle/running: keep status minimal
     return el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["When you’re ready"]),
-      el("p", { class: "p" }, ["Start a pause. If needed, use a script."]),
+      el("div", { class: "badge" }, ["Rule"]),
+      el("p", { class: "p" }, ["During the pause: don’t send anything. Don’t negotiate with the urge."]),
+      el("p", { class: "small" }, ["If you must send words: open Scripts (optional)."]),
     ]);
   }
 
-  function rerender(mode) {
-    currentMode = mode;
+  function rerender() {
     wrap.innerHTML = "";
     wrap.appendChild(header());
-
-    const pauseCard = el("div", { class: "card cardPad" }, [
-      el("h2", { class: "h2" }, ["Pause"]),
-      timerPanel(),
-    ]);
-
-    const status = statusCard(mode);
-    const scriptsCard = el("div", { class: "card cardPad" }, [scriptsPanel()]);
-
-    wrap.appendChild(pauseCard);
-    wrap.appendChild(status);
-    wrap.appendChild(scriptsCard);
-
+    wrap.appendChild(pauseCard());
+    wrap.appendChild(statusCard());
+    wrap.appendChild(scriptsCard());
     if (running) updateTimerUI();
   }
 
-  rerender("idle");
+  rerender();
   return wrap;
 }
