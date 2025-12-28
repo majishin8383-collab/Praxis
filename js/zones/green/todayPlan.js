@@ -1,16 +1,15 @@
 // js/zones/green/todayPlan.js  (FULL REPLACEMENT)
 import { appendLog, readLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
+import { consumeNextIntent, hasStabilizeCreditToday } from "../../state/handoff.js";
 
 const BUILD = "TP-12";
 const KEY = "praxis_today_plan_v5";
-const KEY_AUTOLAUNCH = "praxis_today_plan_autolaunch_v1";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (v === null || v === undefined || v === false) continue;
-
     if (k === "class") node.className = v;
     else if (k === "html") node.innerHTML = v;
     else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
@@ -43,17 +42,16 @@ function readState() {
     return { template: "", a: "", b: "", c: "", doneStep: 0 };
   }
 }
+
 function saveState(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} }
 
-// Templates stay available, but Direction now fills these automatically
 const TEMPLATES = [
-  { id: "stability", label: "Stability", a: "2-min Calm", b: "5-min walk / movement", c: "One small maintenance task (10 min)" },
-  { id: "maintenance", label: "Maintenance", a: "Clean one area (10 min)", b: "Reply to one important thing (5–10 min)", c: "Prep tomorrow (5 min)" },
+  { id: "stability", label: "Stability", a: "2-min Calm", b: "5-min walk / movement", c: "One small maintenance task" },
+  { id: "maintenance", label: "Maintenance", a: "Clean one area (10 min)", b: "Reply to one important thing", c: "Prep tomorrow (5 min)" },
   { id: "progress", label: "Progress", a: "Start the hard task (25 min)", b: "Continue or finish (10–25 min)", c: "Quick wrap-up / tidy (5 min)" },
-  { id: "recovery", label: "Recovery", a: "Eat / hydrate (5 min)", b: "Shower or reset body (5–10 min)", c: "Early night / low stimulation (15 min)" },
+  { id: "recovery", label: "Recovery", a: "Eat / hydrate", b: "Shower or reset body", c: "Early night / low stimulation" },
 ];
 
-// ✅ detect patterns like "2-min", "5-min", "10–25 min"
 function detectMinutes(text) {
   if (!text) return null;
   const t = String(text).toLowerCase();
@@ -85,19 +83,6 @@ function detectMinutes(text) {
   return null;
 }
 
-function readAutolaunch() {
-  try {
-    const raw = sessionStorage.getItem(KEY_AUTOLAUNCH);
-    if (!raw) return null;
-    sessionStorage.removeItem(KEY_AUTOLAUNCH);
-    const v = JSON.parse(raw);
-    const step = Number(v?.step || 1);
-    return { step: Math.min(3, Math.max(1, step)), mode: v?.mode || "focus" };
-  } catch {
-    return null;
-  }
-}
-
 export function renderTodayPlan() {
   const wrap = el("div", { class: "flowShell" });
   let state = readState();
@@ -111,17 +96,22 @@ export function renderTodayPlan() {
   let tick = null;
 
   // UI state
-  let showTemplates = false;   // ✅ cleaner default (templates collapsible)
   let showRefine = false;
-  let statusMode = "idle";     // idle | running | time_complete | offer_continue | stopped_early | logged
-  let lastOutcome = null;      // done | stuck | null
+  let statusMode = "idle";
+  let lastOutcome = null;
   let stopElapsedSec = 0;
 
-  // ✅ If Direction routed here, focus Step 1 automatically
-  const auto = readAutolaunch();
-  if (auto?.step) activeStep = auto.step;
+  // ✅ soft handoff / credit
+  const intent = consumeNextIntent(); // one-time
+  const stabilizedToday = hasStabilizeCreditToday();
 
-  safeAppendLog({ kind: "today_plan_open", when: nowISO(), build: BUILD });
+  // If they stabilized today (or explicit intent), default to Step 2 *without* marking Step 1 done.
+  // They can ALWAYS click Step 1 if they want.
+  if ((intent === "today_plan_step2" || stabilizedToday) && (state.doneStep < 1)) {
+    activeStep = 2;
+  }
+
+  safeAppendLog({ kind: "today_plan_open", when: nowISO(), build: BUILD, intent: intent || null, stabilizedToday });
 
   function stopTick() { if (tick) clearInterval(tick); tick = null; }
 
@@ -132,6 +122,7 @@ export function renderTodayPlan() {
       c: (state.c || "").trim(),
     };
   }
+
   function stepText(n) {
     const s = steps();
     if (n === 1) return s.a;
@@ -139,9 +130,10 @@ export function renderTodayPlan() {
     return s.c;
   }
 
+  // ✅ key change: Step 2 allowed if Step 1 done OR stabilizedToday
   function canStartStep(n) {
     if (n === 1) return true;
-    if (n === 2) return state.doneStep >= 1;
+    if (n === 2) return state.doneStep >= 1 || stabilizedToday;
     if (n === 3) return state.doneStep >= 2;
     return false;
   }
@@ -274,7 +266,7 @@ export function renderTodayPlan() {
   }
 
   function applyTemplate(t) {
-    state = { ...state, template: t.id, a: t.a, b: t.b, c: t.c, doneStep: 0 };
+    state = { ...state, template: t.id, a: t.a, b: t.b, c: t.c };
     saveState(state);
     statusMode = "idle";
     rerender();
@@ -291,9 +283,12 @@ export function renderTodayPlan() {
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["Today’s Plan"]),
-        el("p", { class: "p" }, ["Three steps only. Do Step 1 first."]),
+        el("p", { class: "p" }, ["Three steps only. Do one step at a time."]),
         el("div", { class: "small" }, [`Build ${BUILD}`]),
-      ]),
+        stabilizedToday && state.doneStep < 1
+          ? el("div", { class: "small" }, ["Stabilized today ✓ (Step 2 available)"])
+          : null
+      ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
         el("button", { class: "linkBtn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
       ])
@@ -301,25 +296,13 @@ export function renderTodayPlan() {
   }
 
   function templatesCard() {
-    if (!showTemplates) {
-      return el("div", { class: "card cardPad" }, [
-        el("div", { class: "badge" }, ["Templates"]),
-        el("p", { class: "small" }, ["Optional. If Direction filled your plan, you can ignore this."]),
-        el("div", { class: "btnRow" }, [
-          el("button", { class: "btn", type: "button", onClick: () => { showTemplates = true; rerender(); } }, ["Show templates"]),
-          el("button", { class: "btn", type: "button", onClick: clearAll }, ["Clear"]),
-        ]),
-      ]);
-    }
-
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["Templates"]),
-      el("p", { class: "small" }, ["Tap to overwrite today’s plan."]),
+      el("p", { class: "small" }, ["Tap to fill. Then keep it small."]),
       el("div", { class: "btnRow" }, TEMPLATES.map(t =>
         el("button", { class: "btn", type: "button", onClick: () => applyTemplate(t) }, [t.label])
       )),
       el("div", { class: "btnRow" }, [
-        el("button", { class: "btn", type: "button", onClick: () => { showTemplates = false; rerender(); } }, ["Hide templates"]),
         el("button", { class: "btn", type: "button", onClick: clearAll }, ["Clear"]),
       ]),
     ]);
@@ -345,8 +328,8 @@ export function renderTodayPlan() {
   }
 
   function planCard() {
-    const lock2 = state.doneStep < 1;
-    const lock3 = state.doneStep < 2;
+    const lock2 = !canStartStep(2);
+    const lock3 = !canStartStep(3);
 
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["Your 3 steps"]),
@@ -564,13 +547,5 @@ export function renderTodayPlan() {
   }
 
   rerender();
-
-  // If Direction just routed here, keep the UX tight: scroll to "Do this now"
-  if (auto?.mode === "focus") {
-    setTimeout(() => {
-      try { window.scrollTo(0, 0); } catch {}
-    }, 0);
-  }
-
   return wrap;
 }
