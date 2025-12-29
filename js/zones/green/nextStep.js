@@ -1,8 +1,9 @@
 // js/zones/green/nextStep.js  (FULL REPLACEMENT)
 
 import { appendLog, hasStabilizeCreditToday } from "../../storage.js";
+import { getTemplateById } from "../../state/templates.js";
 
-const BUILD = "NS-3";
+const BUILD = "NS-4";
 
 // Must match Today Plan + Direction
 const KEY_TODAY = "praxis_today_plan_v5";
@@ -27,17 +28,6 @@ function el(tag, attrs = {}, children = []) {
 
 const nowISO = () => new Date().toISOString();
 function safeAppendLog(entry) { try { appendLog(entry); } catch {} }
-
-const TEMPLATES = [
-  { id: "stability", label: "Stability", a: "2-min Calm", b: "5-min walk / movement", c: "One small maintenance task" },
-  { id: "maintenance", label: "Maintenance", a: "Clean one area (10 min)", b: "Reply to one important thing", c: "Prep tomorrow (5 min)" },
-  { id: "progress", label: "Progress", a: "Start the hard task (25 min)", b: "Continue or finish (10–25 min)", c: "Quick wrap-up / tidy (5 min)" },
-  { id: "recovery", label: "Recovery", a: "Eat / hydrate", b: "Shower or reset body", c: "Early night / low stimulation" },
-];
-
-function getTemplateById(id) {
-  return TEMPLATES.find(t => t.id === id) || TEMPLATES[2]; // default Progress
-}
 
 function normalizeState(s) {
   const doneStep = Number(s?.doneStep);
@@ -84,7 +74,7 @@ function seedPlanIfBlank(templateId) {
     return;
   }
 
-  const t = getTemplateById(templateId);
+  const t = getTemplateById(templateId, "progress");
   saveTodayState({ template: t.id, a: t.a, b: t.b, c: t.c, doneStep: 0 });
 }
 
@@ -92,7 +82,6 @@ export function renderNextStep() {
   const wrap = el("div", { class: "flowShell" });
 
   const stabilized = hasStabilizeCreditToday();
-
   safeAppendLog({ kind: "next_step_open", when: nowISO(), build: BUILD, stabilizedToday: stabilized });
 
   function go(label, route, seedTemplateId) {
@@ -111,36 +100,12 @@ export function renderNextStep() {
   }
 
   const OPTIONS = [
-    {
-      label: "Overwhelmed / anxious",
-      hint: "Reduce intensity first.",
-      action: () => go("Overwhelmed / anxious", "#/yellow/calm", "stability"),
-    },
-    {
-      label: "Urge to act / message / react",
-      hint: "Pause before you do anything.",
-      action: () => go("Urge to act / message / react", "#/yellow/stop", "stability"),
-    },
-    {
-      label: "Stuck / frozen",
-      hint: "Move your body first.",
-      action: () => go("Stuck / frozen", "#/green/move", "progress"),
-    },
-    {
-      label: "Restless / distracted",
-      hint: "Discharge energy, then choose a step.",
-      action: () => go("Restless / distracted", "#/green/move", "progress"),
-    },
-    {
-      label: "I’m okay — I need direction",
-      hint: "Auto-build a plan. Start Step 1.",
-      action: () => go("I’m okay — I need direction", "#/green/today", "progress"),
-    },
-    {
-      label: "I don’t know",
-      hint: "Start moving. Clarity follows.",
-      action: () => go("I don’t know", "#/green/move", "stability"),
-    },
+    { label: "Overwhelmed / anxious", hint: "Reduce intensity first.", action: () => go("Overwhelmed / anxious", "#/yellow/calm", "stability") },
+    { label: "Urge to act / message / react", hint: "Pause before you do anything.", action: () => go("Urge to act / message / react", "#/yellow/stop", "stability") },
+    { label: "Stuck / frozen", hint: "Move your body first.", action: () => go("Stuck / frozen", "#/green/move", "progress") },
+    { label: "Restless / distracted", hint: "Discharge energy, then choose a step.", action: () => go("Restless / distracted", "#/green/move", "progress") },
+    { label: "I’m okay — I need direction", hint: "Auto-build a plan. Start Step 1.", action: () => go("I’m okay — I need direction", "#/green/today", "progress") },
+    { label: "I don’t know", hint: "Start moving. Clarity follows.", action: () => go("I don’t know", "#/green/move", "stability") },
   ];
 
   function header() {
@@ -158,24 +123,16 @@ export function renderNextStep() {
   }
 
   function tile(o) {
-    return el(
-      "button",
-      {
-        class: "actionTile",
-        type: "button",
-        onClick: o.action,
-      },
-      [
-        el("div", { class: "tileTop" }, [
-          el("div", {}, [
-            el("div", { class: "tileTitle" }, [o.label]),
-            el("div", { class: "tileSub" }, ["Tap to go"]),
-          ]),
-          el("div", { class: "zoneDot dotGreen" }, []),
+    return el("button", { class: "actionTile", type: "button", onClick: o.action }, [
+      el("div", { class: "tileTop" }, [
+        el("div", {}, [
+          el("div", { class: "tileTitle" }, [o.label]),
+          el("div", { class: "tileSub" }, ["Tap to go"]),
         ]),
-        el("p", { class: "tileHint" }, [o.hint]),
-      ]
-    );
+        el("div", { class: "zoneDot dotGreen" }, []),
+      ]),
+      el("p", { class: "tileHint" }, [o.hint]),
+    ]);
   }
 
   wrap.appendChild(header());
@@ -185,11 +142,7 @@ export function renderNextStep() {
       el("div", { class: "badge" }, ["Don’t overthink"]),
       el("p", { class: "p" }, ["Choose what fits right now. Praxis keeps the plan ready behind you."]),
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
-        el("button", {
-          class: "btn",
-          type: "button",
-          onClick: () => go("Open Today’s Plan", "#/green/today", "progress")
-        }, ["Open Today’s Plan"]),
+        el("button", { class: "btn", type: "button", onClick: () => go("Open Today’s Plan", "#/green/today", "progress") }, ["Open Today’s Plan"]),
       ]),
     ])
   );
