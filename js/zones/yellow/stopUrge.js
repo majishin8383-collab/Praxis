@@ -1,8 +1,7 @@
 // js/zones/yellow/stopUrge.js  (FULL REPLACEMENT)
 
-import { appendLog } from "../../storage.js";
+import { appendLog, grantStabilizeCreditToday, setNextIntent } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
-import { grantStabilizeCreditToday, setNextIntent } from "../../state/handoff.js";
 
 const BUILD = "SU-9";
 
@@ -12,8 +11,7 @@ function el(tag, attrs = {}, children = []) {
     if (v === null || v === undefined || v === false) continue;
     if (k === "class") node.className = v;
     else if (k === "html") node.innerHTML = v;
-    else if (k.startsWith("on") && typeof v === "function")
-      node.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
     else if (v === true) node.setAttribute(k, "");
     else node.setAttribute(k, v);
   }
@@ -25,12 +23,7 @@ function el(tag, attrs = {}, children = []) {
 }
 
 const nowISO = () => new Date().toISOString();
-
-function safeAppendLog(entry) {
-  try {
-    appendLog(entry);
-  } catch {}
-}
+function safeAppendLog(entry) { try { appendLog(entry); } catch {} }
 
 function copyToClipboard(text) {
   if (navigator.clipboard?.writeText) {
@@ -48,8 +41,8 @@ const SCRIPT_SETS = [
     variants: [
       "Got your message. I’m not available right now. I’ll reply later.",
       "I saw this. I can’t talk right now. I’ll respond later.",
-      "I’m tied up right now. I’ll get back to you later.",
-    ],
+      "I’m tied up right now. I’ll get back to you later."
+    ]
   },
   {
     id: "boundary",
@@ -58,8 +51,8 @@ const SCRIPT_SETS = [
     variants: [
       "I’m taking space and won’t be engaging. Please respect that.",
       "I’m not available for this conversation. Please stop contacting me about it.",
-      "I’m stepping back. I won’t respond further right now.",
-    ],
+      "I’m stepping back. I won’t respond further right now."
+    ]
   },
   {
     id: "logistics",
@@ -68,8 +61,8 @@ const SCRIPT_SETS = [
     variants: [
       "I can handle logistics. I’m not discussing anything else.",
       "I’ll respond only to practical logistics. I’m not discussing the relationship.",
-      "If this is about logistics, I can reply. Otherwise I’m not engaging.",
-    ],
+      "If this is about logistics, I can reply. Otherwise I’m not engaging."
+    ]
   },
   {
     id: "deescalate",
@@ -78,9 +71,9 @@ const SCRIPT_SETS = [
     variants: [
       "I’m not going to argue. I’m stepping away for now.",
       "This isn’t productive. I’m going to pause and revisit later.",
-      "I’m going to end this conversation now.",
-    ],
-  },
+      "I’m going to end this conversation now."
+    ]
+  }
 ];
 
 export function renderStopUrge() {
@@ -97,8 +90,8 @@ export function renderStopUrge() {
   let selectedSetId = "neutral";
   let selectedVariantIndex = 0;
 
-  // modes
-  let currentMode = "idle"; // "idle" | "running" | "pause_done" | "early_stop" | "logged"
+  // modes: idle | running | pause_done | early_stop | logged
+  let mode = "idle";
   let lastOutcome = null; // "passed" | "still_present" | null
 
   // early stop telemetry
@@ -123,13 +116,13 @@ export function renderStopUrge() {
   }
 
   function selectedScriptText() {
-    const set = SCRIPT_SETS.find((s) => s.id === selectedSetId) || SCRIPT_SETS[0];
+    const set = SCRIPT_SETS.find(s => s.id === selectedSetId) || SCRIPT_SETS[0];
     return {
       setId: set.id,
       setTitle: set.title,
       optionIndex: selectedVariantIndex,
       text: set.variants[selectedVariantIndex] || set.variants[0],
-      desc: set.desc,
+      desc: set.desc
     };
   }
 
@@ -154,13 +147,15 @@ export function renderStopUrge() {
       if (remaining <= 0) {
         stopTick();
         running = false;
-        rerender("pause_done");
+        mode = "pause_done";
+        rerender();
       } else {
         updateTimerUI();
       }
     }, 250);
 
-    rerender("running");
+    mode = "running";
+    rerender();
   }
 
   function extend(extraMin) {
@@ -168,34 +163,11 @@ export function renderStopUrge() {
     const newRemaining = remaining + extraMin * 60 * 1000;
     durationMin = Math.ceil(newRemaining / (60 * 1000));
     endAt = Date.now() + newRemaining;
-    rerender("running");
-  }
 
-  function logOutcome(outcome, note) {
-    lastOutcome = outcome;
-    const s = selectedScriptText();
+    safeAppendLog({ kind: "stop_urge_extend", when: nowISO(), extraMin, minutesNow: durationMin, build: BUILD });
 
-    safeAppendLog({
-      kind: "stop_urge",
-      when: nowISO(),
-      minutes: durationMin,
-      outcome,
-      note,
-      stoppedEarly,
-      earlyStopReason,
-      earlyStopElapsedSec,
-      scriptSetId: s.setId,
-      scriptSetTitle: s.setTitle,
-      scriptOption: (s.optionIndex ?? 0) + 1,
-      build: BUILD,
-    });
-
-    // ✅ Stabilize credit when urge passes
-    if (outcome === "passed") {
-      try {
-        grantStabilizeCreditToday();
-      } catch {}
-    }
+    mode = "running";
+    rerender();
   }
 
   function stopEarly() {
@@ -215,10 +187,36 @@ export function renderStopUrge() {
       minutesPlanned: durationMin,
       elapsedSec: Math.round(elapsedMs / 1000),
       remainingSec: Math.round(remainingMs / 1000),
-      build: BUILD,
+      build: BUILD
     });
 
-    rerender("early_stop");
+    mode = "early_stop";
+    rerender();
+  }
+
+  function logOutcome(outcome, note) {
+    lastOutcome = outcome;
+    const s = selectedScriptText();
+
+    safeAppendLog({
+      kind: "stop_urge",
+      when: nowISO(),
+      minutes: durationMin,
+      outcome, // passed | still_present
+      note,
+      stoppedEarly,
+      earlyStopReason,
+      earlyStopElapsedSec,
+      scriptSetId: s.setId,
+      scriptSetTitle: s.setTitle,
+      scriptOption: (s.optionIndex ?? 0) + 1,
+      build: BUILD
+    });
+
+    // ✅ stabilize credit only on "passed" (soft guidance)
+    if (outcome === "passed") {
+      try { grantStabilizeCreditToday(); } catch {}
+    }
   }
 
   function header() {
@@ -229,20 +227,12 @@ export function renderStopUrge() {
         el("div", { class: "small" }, [`Build ${BUILD}`]),
       ]),
       el("div", { class: "flowMeta" }, [
-        el(
-          "button",
-          {
-            class: "linkBtn",
-            type: "button",
-            onClick: () => {
-              running = false;
-              stopTick();
-              location.hash = "#/home";
-            },
-          },
-          ["Reset"]
-        ),
-      ]),
+        el("button", {
+          class: "linkBtn",
+          type: "button",
+          onClick: () => { running = false; stopTick(); location.hash = "#/home"; }
+        }, ["Reset"]),
+      ])
     ]);
   }
 
@@ -274,62 +264,37 @@ export function renderStopUrge() {
 
   function scriptsPanel() {
     const s = selectedScriptText();
-    const text = s.text;
 
-    const setButtons = el(
-      "div",
-      { class: "btnRow" },
-      SCRIPT_SETS.map((set) =>
-        el(
-          "button",
-          {
-            class: "btn",
-            type: "button",
-            onClick: () => {
-              selectedSetId = set.id;
-              selectedVariantIndex = 0;
-              rerender(currentMode);
-            },
-          },
-          [set.title]
-        )
-      )
-    );
+    const setButtons = el("div", { class: "btnRow" }, SCRIPT_SETS.map(set =>
+      el("button", {
+        class: `btn ${set.id === selectedSetId ? "btnPrimary" : ""}`.trim(),
+        type: "button",
+        onClick: () => { selectedSetId = set.id; selectedVariantIndex = 0; rerender(); }
+      }, [set.title])
+    ));
 
-    const preview = el(
-      "div",
-      { class: "card cardPad", style: "background:rgba(255,255,255,.04);border:1px solid var(--line);" },
-      [
-        el("div", { class: "badge" }, ["Preview"]),
-        el("p", { class: "p", style: "margin-top:8px;font-weight:800;color:var(--text);" }, [text]),
-        el("div", { class: "btnRow" }, [
-          el("button", { class: "btn btnPrimary", type: "button", onClick: () => copyToClipboard(text) }, ["Copy this"]),
-        ]),
-        el("p", { class: "small", style: "margin-top:8px" }, ["If copy is blocked on mobile, it will pop up so you can copy manually."]),
-      ]
-    );
+    const preview = el("div", {
+      class: "card cardPad",
+      style: "background:rgba(255,255,255,.04);border:1px solid var(--line);"
+    }, [
+      el("div", { class: "badge" }, ["Preview"]),
+      el("p", { class: "p", style: "margin-top:8px;font-weight:800;color:var(--text);" }, [s.text]),
+      el("div", { class: "btnRow" }, [
+        el("button", { class: "btn btnPrimary", type: "button", onClick: () => copyToClipboard(s.text) }, ["Copy this"]),
+      ]),
+      el("p", { class: "small", style: "margin-top:8px" }, ["If copy is blocked on mobile, it will pop up so you can copy manually."])
+    ]);
 
     const variants = el("div", { class: "flowShell" }, [
       el("h2", { class: "h2" }, ["Options"]),
       el("p", { class: "small" }, [s.desc]),
-      el(
-        "div",
-        { class: "btnRow" },
-        (SCRIPT_SETS.find((x) => x.id === selectedSetId) || SCRIPT_SETS[0]).variants.map((_, idx) =>
-          el(
-            "button",
-            {
-              class: "btn",
-              type: "button",
-              onClick: () => {
-                selectedVariantIndex = idx;
-                rerender(currentMode);
-              },
-            },
-            [`Option ${idx + 1}`]
-          )
-        )
-      ),
+      el("div", { class: "btnRow" }, (SCRIPT_SETS.find(x => x.id === selectedSetId)?.variants || []).map((_, idx) =>
+        el("button", {
+          class: `btn ${idx === selectedVariantIndex ? "btnPrimary" : ""}`.trim(),
+          type: "button",
+          onClick: () => { selectedVariantIndex = idx; rerender(); }
+        }, [`Option ${idx + 1}`])
+      )),
     ]);
 
     return el("div", { class: "flowShell" }, [
@@ -340,39 +305,29 @@ export function renderStopUrge() {
     ]);
   }
 
-  function statusCard(mode) {
+  function statusCard() {
     if (mode === "early_stop") {
       return el("div", { class: "card cardPad" }, [
         el("div", { class: "badge" }, ["Stopped early"]),
         el("p", { class: "p" }, [`You paused for ${earlyStopElapsedSec}s. Why are you stopping?`]),
         el("div", { class: "btnRow" }, [
-          el(
-            "button",
-            {
-              class: "btn btnPrimary",
-              type: "button",
-              onClick: () => {
-                earlyStopReason = "safe";
-                rerender("pause_done");
-              },
-            },
-            ["It dropped / situation ended"]
-          ),
-          el(
-            "button",
-            {
-              class: "btn",
-              type: "button",
-              onClick: () => {
-                earlyStopReason = "bailed";
-                lastOutcome = "still_present";
-                rerender("logged");
-              },
-            },
-            ["I’m still hot / about to act"]
-          ),
+          el("button", {
+            class: "btn btnPrimary",
+            type: "button",
+            onClick: () => { earlyStopReason = "safe"; mode = "pause_done"; rerender(); }
+          }, ["It dropped / situation ended"]),
+          el("button", {
+            class: "btn",
+            type: "button",
+            onClick: () => {
+              earlyStopReason = "bailed";
+              logOutcome("still_present", "Stopped early (still present).");
+              mode = "logged";
+              rerender();
+            }
+          }, ["I’m still hot / about to act"]),
         ]),
-        el("p", { class: "small", style: "margin-top:10px" }, ["Honesty helps Praxis route you correctly."]),
+        el("p", { class: "small", style: "margin-top:10px" }, ["Honesty helps Praxis guide you correctly."]),
       ]);
     }
 
@@ -381,30 +336,16 @@ export function renderStopUrge() {
         el("div", { class: "badge" }, [stoppedEarly ? "Check-in" : "Pause complete"]),
         el("p", { class: "p" }, ["Choose what’s true right now."]),
         el("div", { class: "btnRow" }, [
-          el(
-            "button",
-            {
-              class: "btn btnPrimary",
-              type: "button",
-              onClick: () => {
-                logOutcome("passed", "Urge passed.");
-                rerender("logged");
-              },
-            },
-            ["Urge passed"]
-          ),
-          el(
-            "button",
-            {
-              class: "btn",
-              type: "button",
-              onClick: () => {
-                logOutcome("still_present", "Urge still present.");
-                rerender("logged");
-              },
-            },
-            ["Still present"]
-          ),
+          el("button", {
+            class: "btn btnPrimary",
+            type: "button",
+            onClick: () => { logOutcome("passed", "Urge passed."); mode = "logged"; rerender(); }
+          }, ["Urge passed"]),
+          el("button", {
+            class: "btn",
+            type: "button",
+            onClick: () => { logOutcome("still_present", "Urge still present."); mode = "logged"; rerender(); }
+          }, ["Still present"]),
         ]),
       ]);
     }
@@ -427,36 +368,31 @@ export function renderStopUrge() {
         el("p", { class: "p" }, [headline]),
         el("div", { class: "btnRow" }, [
           passed
-            ? el(
-                "button",
-                {
-                  class: "btn btnPrimary",
-                  type: "button",
-                  onClick: () => {
-                    // ✅ handoff: if they go to Today’s Plan now, default to Step 2
-                    try {
-                      setNextIntent("today_plan_step2");
-                    } catch {}
-                    location.hash = "#/green/today";
-                  },
-                },
-                ["Today’s Plan"]
-              )
+            ? el("button", {
+                class: "btn btnPrimary",
+                type: "button",
+                onClick: () => {
+                  // ✅ handoff: if they go to Today’s Plan now, default to Step 2
+                  try { setNextIntent("today_plan_step2"); } catch {}
+                  location.hash = "#/green/today";
+                }
+              }, ["Today’s Plan"])
             : el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/yellow/calm") }, ["Calm Me Down"]),
 
           passed
             ? el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/move") }, ["Move Forward"])
             : el("button", { class: "btn", type: "button", onClick: () => startPause(10) }, ["Start 10 min"]),
 
-          still
-            ? el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/red/emergency") }, ["Emergency"])
-            : el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Back to Reset"]),
-        ].filter(Boolean)),
+          el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Back to Reset"]),
+        ]),
         el("div", { class: "btnRow" }, [
-          el("button", { class: "btn", type: "button", onClick: () => rerender("idle") }, ["Run again"]),
+          el("button", { class: "btn", type: "button", onClick: () => { mode = "idle"; rerender(); } }, ["Run again"]),
         ]),
       ]);
     }
+
+    // idle / running (no extra status box needed while running)
+    if (mode === "running") return null;
 
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["When you’re ready"]),
@@ -464,22 +400,26 @@ export function renderStopUrge() {
     ]);
   }
 
-  function rerender(mode) {
-    currentMode = mode;
+  function rerender() {
     wrap.innerHTML = "";
     wrap.appendChild(header());
 
-    const pauseCard = el("div", { class: "card cardPad" }, [el("h2", { class: "h2" }, ["Pause"]), timerPanel()]);
-    const status = statusCard(mode);
-    const scriptsCard = el("div", { class: "card cardPad" }, [scriptsPanel()]);
+    const pauseCard = el("div", { class: "card cardPad" }, [
+      el("h2", { class: "h2" }, ["Pause"]),
+      timerPanel(),
+    ]);
 
     wrap.appendChild(pauseCard);
-    wrap.appendChild(status);
-    wrap.appendChild(scriptsCard);
+
+    const status = statusCard();
+    if (status) wrap.appendChild(status);
+
+    // ✅ Keep UX clean: no session history shown
+    wrap.appendChild(el("div", { class: "card cardPad" }, [scriptsPanel()]));
 
     if (running) updateTimerUI();
   }
 
-  rerender("idle");
+  rerender();
   return wrap;
 }
