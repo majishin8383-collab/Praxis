@@ -1,17 +1,19 @@
 // js/zones/yellow/stopUrge.js  (FULL REPLACEMENT)
 
-import { appendLog } from "../../storage.js";
+import { appendLog, setNextIntent, grantStabilizeCreditToday } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
-import { grantStabilizeCreditToday, setNextIntent } from "../../state/handoff.js";
 
 const BUILD = "SU-9";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
+    if (v === null || v === undefined || v === false) continue;
     if (k === "class") node.className = v;
+    else if (k === "html") node.innerHTML = v;
     else if (k.startsWith("on") && typeof v === "function")
       node.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (v === true) node.setAttribute(k, "");
     else node.setAttribute(k, v);
   }
   for (const child of children) {
@@ -22,7 +24,10 @@ function el(tag, attrs = {}, children = []) {
 }
 
 const nowISO = () => new Date().toISOString();
-function safeAppendLog(entry) { try { appendLog(entry); } catch {} }
+
+function safeAppendLog(entry) {
+  try { appendLog(entry); } catch {}
+}
 
 function copyToClipboard(text) {
   if (navigator.clipboard?.writeText) {
@@ -146,9 +151,7 @@ export function renderStopUrge() {
     const newRemaining = remaining + extraMin * 60 * 1000;
     durationMin = Math.ceil(newRemaining / (60 * 1000));
     endAt = Date.now() + newRemaining;
-
     safeAppendLog({ kind: "stop_urge_extend", when: nowISO(), extraMin, minutesNow: durationMin, build: BUILD });
-
     rerender("running");
   }
 
@@ -170,7 +173,7 @@ export function renderStopUrge() {
       kind: "stop_urge",
       when: nowISO(),
       minutes: durationMin,
-      outcome, // "passed" | "still_present"
+      outcome,
       note,
       stoppedEarly,
       earlyStopReason,
@@ -181,7 +184,7 @@ export function renderStopUrge() {
       build: BUILD
     });
 
-    // Stabilize credit only when urge passes
+    // ✅ Stabilize credit ONLY when urge passed
     if (outcome === "passed") {
       try { grantStabilizeCreditToday(); } catch {}
     }
@@ -315,8 +318,7 @@ export function renderStopUrge() {
             type: "button",
             onClick: () => {
               earlyStopReason = "bailed";
-              // ✅ log a real outcome (don’t just set lastOutcome)
-              logOutcome("still_present", "Stopped early — still hot / about to act.");
+              lastOutcome = "still_present";
               rerender("logged");
             }
           }, ["I’m still hot / about to act"]),
@@ -366,7 +368,7 @@ export function renderStopUrge() {
                 class: "btn btnPrimary",
                 type: "button",
                 onClick: () => {
-                  // ✅ handoff: if they go to Today’s Plan now, default to Step 2
+                  // ✅ handoff: default Today’s Plan to Step 2
                   try { setNextIntent("today_plan_step2"); } catch {}
                   location.hash = "#/green/today";
                 }
