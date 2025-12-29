@@ -2,16 +2,14 @@
 
 import { appendLog, consumeNextIntent, hasStabilizeCreditToday } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
+import { TEMPLATES, getTemplateById, pickDefaultTemplateId } from "../../state/templates.js";
 
 const BUILD = "TP-15";
 
-// ✅ IMPORTANT: must match Direction’s writer key (direction.js uses v5)
+// ✅ IMPORTANT: must match Direction’s writer key (your direction.js uses v5)
 const KEY_PRIMARY = "praxis_today_plan_v5";
 // Back-compat (if you accidentally saved under v6 previously)
 const KEY_FALLBACK = "praxis_today_plan_v6";
-
-// ✅ Direction’s autolaunch hint (session-only)
-const KEY_AUTOLAUNCH = "praxis_today_plan_autolaunch_v1";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -31,10 +29,7 @@ function el(tag, attrs = {}, children = []) {
 }
 
 const nowISO = () => new Date().toISOString();
-
-function safeAppendLog(entry) {
-  try { appendLog(entry); } catch {}
-}
+function safeAppendLog(entry) { try { appendLog(entry); } catch {} }
 
 function normalizeState(s) {
   const doneStep = Number(s?.doneStep);
@@ -48,10 +43,12 @@ function normalizeState(s) {
 }
 
 function readState() {
+  // ✅ read primary key first (Direction writes here)
   try {
     const raw = localStorage.getItem(KEY_PRIMARY);
     if (raw) return normalizeState(JSON.parse(raw));
   } catch {}
+  // Back-compat (if you wrote v6 before)
   try {
     const raw2 = localStorage.getItem(KEY_FALLBACK);
     if (raw2) return normalizeState(JSON.parse(raw2));
@@ -62,31 +59,6 @@ function readState() {
 function saveState(s) {
   try { localStorage.setItem(KEY_PRIMARY, JSON.stringify(s)); } catch {}
 }
-
-function readAutolaunchOnce() {
-  try {
-    const raw = sessionStorage.getItem(KEY_AUTOLAUNCH);
-    if (!raw) return null;
-    sessionStorage.removeItem(KEY_AUTOLAUNCH);
-    const parsed = JSON.parse(raw);
-    const step = Number(parsed?.step);
-    const mode = String(parsed?.mode || "");
-    return {
-      step: Number.isFinite(step) ? step : 1,
-      mode,
-    };
-  } catch {
-    try { sessionStorage.removeItem(KEY_AUTOLAUNCH); } catch {}
-    return null;
-  }
-}
-
-const TEMPLATES = [
-  { id: "stability", label: "Stability", a: "2-min Calm", b: "5-min walk / movement", c: "One small maintenance task" },
-  { id: "maintenance", label: "Maintenance", a: "Clean one area (10 min)", b: "Reply to one important thing", c: "Prep tomorrow (5 min)" },
-  { id: "progress", label: "Progress", a: "Start the hard task (25 min)", b: "Continue or finish (10–25 min)", c: "Quick wrap-up / tidy (5 min)" },
-  { id: "recovery", label: "Recovery", a: "Eat / hydrate", b: "Shower or reset body", c: "Early night / low stimulation" },
-];
 
 function detectMinutes(text) {
   if (!text) return null;
@@ -120,20 +92,8 @@ function isBlankPlan(state) {
   return !a && !b && !c;
 }
 
-function pickDefaultTemplateId(stabilizedToday) {
-  // Always template-based by default:
-  // - If stabilized today, bias to Stability.
-  // - Otherwise Progress as the default “don’t drift”.
-  return stabilizedToday ? "stability" : "progress";
-}
-
-function getTemplateById(id) {
-  return TEMPLATES.find((t) => t.id === id) || null;
-}
-
 export function renderTodayPlan() {
   const wrap = el("div", { class: "flowShell" });
-
   let state = readState();
 
   // timer state
@@ -146,43 +106,32 @@ export function renderTodayPlan() {
 
   // UI state
   let statusMode = "idle"; // idle | running | stopped_early | time_complete | offer_continue | logged
-  let lastOutcome = null;  // done | stuck | null
+  let lastOutcome = null; // done | stuck | null
   let stopElapsedSec = 0;
 
-  // template panel
+  // “Change template” panel (collapsed by default)
   let showTemplates = false;
 
-  // ✅ Focus mode (keeps Today Plan from feeling “busy”)
-  let focusMode = false;
-
   // ✅ handoff / credit
-  const autolaunch = readAutolaunchOnce();
   const intent = consumeNextIntent(); // one-time
   const stabilizedToday = hasStabilizeCreditToday();
 
   // ✅ Always base on a template by default (unless user already has a plan)
   if (isBlankPlan(state)) {
-    const defaultId = pickDefaultTemplateId(stabilizedToday);
-    const t = getTemplateById(defaultId);
-    if (t) {
-      state = { ...state, template: t.id, a: t.a, b: t.b, c: t.c };
-      saveState(state);
-    }
+    const defaultId = pickDefaultTemplateId({ stabilizedToday });
+    const t = getTemplateById(defaultId, "progress");
+    state = { ...state, template: t.id, a: t.a, b: t.b, c: t.c };
+    saveState(state);
   } else {
+    // Keep user content; don’t overwrite. Just ensure template is set.
     if (!state.template) {
       state = { ...state, template: "custom" };
       saveState(state);
     }
   }
 
-  // ✅ Decide initial step + focus mode priority:
-  // 1) Direction autolaunch wins (explicit step + focus mode)
-  // 2) intent / stabilized -> Step 2 soft skip (no marking Step 1 done)
-  if (autolaunch) {
-    const s = Math.max(1, Math.min(3, Number(autolaunch.step || 1)));
-    activeStep = s;
-    if (String(autolaunch.mode || "") === "focus") focusMode = true;
-  } else if ((intent === "today_plan_step2" || stabilizedToday) && state.doneStep < 1) {
+  // If they stabilized today (or explicit intent), default to Step 2 without auto-marking Step 1 done.
+  if ((intent === "today_plan_step2" || stabilizedToday) && state.doneStep < 1) {
     activeStep = 2;
   }
 
@@ -192,8 +141,7 @@ export function renderTodayPlan() {
     build: BUILD,
     intent: intent || null,
     stabilizedToday,
-    template: state.template || null,
-    focusMode: !!focusMode
+    template: state.template || null
   });
 
   function stopTick() { if (tick) clearInterval(tick); tick = null; }
@@ -236,9 +184,9 @@ export function renderTodayPlan() {
     if (!canStartStep(activeStep)) return;
 
     liveDurationMin = detectMinutes(txt) ?? 10;
-
     running = true;
     lastOutcome = null;
+
     startAt = Date.now();
     endAt = Date.now() + liveDurationMin * 60 * 1000;
 
@@ -273,6 +221,7 @@ export function renderTodayPlan() {
   function continueAfterStuck(extraMin) {
     liveDurationMin = Math.max(1, extraMin);
     running = true;
+
     startAt = Date.now();
     endAt = Date.now() + liveDurationMin * 60 * 1000;
 
@@ -329,7 +278,6 @@ export function renderTodayPlan() {
 
   function logStep(result) {
     lastOutcome = result;
-
     safeAppendLog({
       kind: "today_plan_step",
       when: nowISO(),
@@ -343,39 +291,38 @@ export function renderTodayPlan() {
   }
 
   function applyTemplate(t) {
-    // Changing template resets progress (clean mental model)
+    // ✅ Changing template should reset progress (clean mental model)
     state = { ...state, template: t.id, a: t.a, b: t.b, c: t.c, doneStep: 0 };
     saveState(state);
     activeStep = 1;
     statusMode = "idle";
     showTemplates = false;
-    focusMode = true; // ✅ after switching, default back into focus (less busy)
     rerender();
   }
 
-  function resetPlan() {
-    // Clearing re-seeds a default template (never “blank optional templates” again)
-    state = { template: "", a: "", b: "", c: "", doneStep: 0 };
-    const defaultId = pickDefaultTemplateId(stabilizedToday);
-    const t = getTemplateById(defaultId);
-    if (t) state = { ...state, template: t.id, a: t.a, b: t.b, c: t.c, doneStep: 0 };
+  function clearAll() {
+    // ✅ Clearing should also re-seed a default template (never blank)
+    const defaultId = pickDefaultTemplateId({ stabilizedToday });
+    const t = getTemplateById(defaultId, "progress");
+    state = { template: t.id, a: t.a, b: t.b, c: t.c, doneStep: 0 };
     saveState(state);
     activeStep = 1;
     statusMode = "idle";
-    showTemplates = false;
-    focusMode = true;
     rerender();
   }
 
   function header() {
+    const currentLabel =
+      state.template && state.template !== "custom"
+        ? (getTemplateById(state.template, "progress")?.label || "Template")
+        : "Custom";
+
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["Today’s Plan"]),
         el("p", { class: "p" }, ["Three steps only. Do one step at a time."]),
-        el("div", { class: "small" }, [`Build ${BUILD}`]),
-        stabilizedToday && state.doneStep < 1
-          ? el("div", { class: "small" }, ["Stabilized today ✓ (Step 2 available)"])
-          : null
+        el("div", { class: "small" }, [`Build ${BUILD} • ${currentLabel}`]),
+        stabilizedToday && state.doneStep < 1 ? el("div", { class: "small" }, ["Stabilized today ✓ (Step 2 available)"]) : null,
       ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
         el("button", { class: "linkBtn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
@@ -383,27 +330,18 @@ export function renderTodayPlan() {
     ]);
   }
 
-  function planTypeCard() {
+  function changeTemplateCard() {
     const currentLabel =
       state.template && state.template !== "custom"
-        ? (getTemplateById(state.template)?.label || "Template")
+        ? (getTemplateById(state.template, "progress")?.label || "Template")
         : "Custom";
 
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["Plan type"]),
       el("p", { class: "small" }, [`Current: ${currentLabel}`]),
       el("div", { class: "btnRow" }, [
-        el("button", {
-          class: "btn",
-          type: "button",
-          onClick: () => { showTemplates = !showTemplates; rerender(); },
-        }, [showTemplates ? "Hide templates" : "Change template"]),
-        el("button", { class: "btn", type: "button", onClick: resetPlan }, ["Reset plan"]),
-        el("button", {
-          class: "btn",
-          type: "button",
-          onClick: () => { focusMode = !focusMode; rerender(); }
-        }, [focusMode ? "Show plan editor" : "Focus mode"]),
+        el("button", { class: "btn", type: "button", onClick: () => { showTemplates = !showTemplates; rerender(); } }, [showTemplates ? "Hide" : "Change template"]),
+        el("button", { class: "btn", type: "button", onClick: clearAll }, ["Reset plan"]),
       ]),
       showTemplates
         ? el("div", { class: "flowShell", style: "margin-top:10px" }, [
@@ -430,7 +368,7 @@ export function renderTodayPlan() {
           ";",
         onInput: (e) => {
           state[key] = e.target.value;
-          // editing a template becomes custom (no wipe)
+          // if they edit a template, it becomes custom (but we do NOT wipe anything)
           if (state.template && state.template !== "custom") state.template = "custom";
           saveState(state);
         },
@@ -441,7 +379,6 @@ export function renderTodayPlan() {
   function planCard() {
     const lock2 = !canStartStep(2);
     const lock3 = !canStartStep(3);
-
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["Your 3 steps"]),
       stepInput("Step 1", "a", false),
@@ -456,41 +393,20 @@ export function renderTodayPlan() {
     const autoMin = detectMinutes(currentText) ?? 10;
 
     const stepButtons = el("div", { class: "btnRow" }, [
-      el("button", {
-        class: `btn ${activeStep === 1 ? "btnPrimary" : ""}`.trim(),
-        type: "button",
-        onClick: () => { activeStep = 1; statusMode = "idle"; rerender(); }
-      }, ["Step 1"]),
-      el("button", {
-        class: `btn ${activeStep === 2 ? "btnPrimary" : ""}`.trim(),
-        type: "button",
-        onClick: () => { activeStep = 2; statusMode = "idle"; rerender(); },
-        disabled: canStartStep(2) ? false : true
-      }, ["Step 2"]),
-      el("button", {
-        class: `btn ${activeStep === 3 ? "btnPrimary" : ""}`.trim(),
-        type: "button",
-        onClick: () => { activeStep = 3; statusMode = "idle"; rerender(); },
-        disabled: canStartStep(3) ? false : true
-      }, ["Step 3"]),
+      el("button", { class: `btn ${activeStep === 1 ? "btnPrimary" : ""}`.trim(), type: "button", onClick: () => { activeStep = 1; statusMode = "idle"; rerender(); } }, ["Step 1"]),
+      el("button", { class: `btn ${activeStep === 2 ? "btnPrimary" : ""}`.trim(), type: "button", onClick: () => { activeStep = 2; statusMode = "idle"; rerender(); }, disabled: canStartStep(2) ? false : true }, ["Step 2"]),
+      el("button", { class: `btn ${activeStep === 3 ? "btnPrimary" : ""}`.trim(), type: "button", onClick: () => { activeStep = 3; statusMode = "idle"; rerender(); }, disabled: canStartStep(3) ? false : true }, ["Step 3"]),
     ]);
 
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["Do this now"]),
       stepButtons,
-      el("p", { class: "p", style: "margin-top:8px;font-weight:900;" }, [
-        currentText ? currentText : "Add text to this step (show plan editor) to begin."
-      ]),
+      el("p", { class: "p", style: "margin-top:8px;font-weight:900;" }, [currentText ? currentText : "Add text to this step above."]),
       currentText
         ? el("p", { class: "small", style: "margin-top:8px" }, [`Timer: ${autoMin} min (auto)`])
         : el("p", { class: "small", style: "margin-top:8px" }, ["Timer: 10 min default (add a time to override)."]),
       el("div", { class: "btnRow" }, [
-        el("button", {
-          class: "btn btnPrimary",
-          type: "button",
-          onClick: startTimerForStep,
-          disabled: !(currentText && canStartStep(activeStep)) || running
-        }, ["Start Step"]),
+        el("button", { class: "btn btnPrimary", type: "button", onClick: startTimerForStep, disabled: !(currentText && canStartStep(activeStep)) || running }, ["Start Step"]),
         el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/move") }, ["Move Forward"]),
       ]),
     ]);
@@ -499,14 +415,11 @@ export function renderTodayPlan() {
   function timerCard() {
     if (!running) return null;
     const remaining = clamp(endAt - Date.now(), 0, liveDurationMin * 60 * 1000);
-
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, [`Step ${activeStep} • ${liveDurationMin} min`]),
       el("div", { class: "timerBox" }, [
         el("div", { class: "timerReadout", "data-timer-readout": "1" }, [formatMMSS(remaining)]),
-        el("div", { class: "progressBar" }, [
-          el("div", { class: "progressFill", "data-progress-fill": "1" }, []),
-        ]),
+        el("div", { class: "progressBar" }, [el("div", { class: "progressFill", "data-progress-fill": "1" }, [])]),
         el("div", { class: "btnRow" }, [
           el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"]),
         ]),
@@ -581,21 +494,14 @@ export function renderTodayPlan() {
     if (statusMode === "logged") {
       const good = lastOutcome === "done";
       const nextStep = Math.min(3, activeStep + 1);
-
       return el("div", { class: "card cardPad" }, [
         el("div", { class: "badge" }, ["Next move"]),
         el("p", { class: "p" }, [
-          good
-            ? (activeStep < 3 ? `Go to Step ${nextStep}.` : "Plan complete. Reset or choose a new direction.")
-            : "Change state, then try again."
+          good ? (activeStep < 3 ? `Go to Step ${nextStep}.` : "Plan complete. Reset or choose a new direction.") : "Change state, then try again."
         ]),
         el("div", { class: "btnRow" }, [
           good && activeStep < 3
-            ? el("button", {
-                class: "btn btnPrimary",
-                type: "button",
-                onClick: () => { activeStep = nextStep; statusMode = "idle"; rerender(); }
-              }, [`Step ${nextStep}`])
+            ? el("button", { class: "btn btnPrimary", type: "button", onClick: () => { activeStep = nextStep; statusMode = "idle"; rerender(); } }, [`Step ${nextStep}`])
             : el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
           el("button", { class: "btn", type: "button", onClick: () => { statusMode = "idle"; rerender(); } }, ["Back to plan"]),
         ]),
@@ -608,13 +514,8 @@ export function renderTodayPlan() {
   function rerender() {
     wrap.innerHTML = "";
     wrap.appendChild(header());
-    wrap.appendChild(planTypeCard());
-
-    // ✅ Focus mode keeps it from looking “busy” — but editor is always 1 tap away.
-    if (!focusMode) {
-      wrap.appendChild(planCard());
-    }
-
+    wrap.appendChild(changeTemplateCard());
+    wrap.appendChild(planCard());
     wrap.appendChild(primaryActionCard());
 
     const t = timerCard();
