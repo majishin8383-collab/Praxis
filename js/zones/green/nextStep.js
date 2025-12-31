@@ -7,7 +7,7 @@
 // js/zones/green/nextStep.js (FULL REPLACEMENT)
 import { appendLog, hasStabilizeCreditToday, setNextIntent } from "../../storage.js";
 
-const BUILD = "NS-3";
+const BUILD = "NS-4";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -60,8 +60,8 @@ export function renderNextStep() {
   function header() {
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
-        el("h1", { class: "h1" }, ["Find Next Step"]),
-        el("p", { class: "p" }, ["No analysis. Pick one next move."]),
+        el("h1", { class: "h1" }, ["Next move"]),
+        el("p", { class: "p" }, ["This route is a legacy helper. Choose a real tile."]),
         String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
       ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
@@ -72,30 +72,40 @@ export function renderNextStep() {
 
   function mainCard() {
     const line = stabilizedToday
-      ? "You stabilized today. A simple plan is available."
-      : "If you’re not stable yet, start with motion or a pause first.";
+      ? "You stabilized today. Today’s Plan can open on Step 2."
+      : "If you’re not stable yet, start with Calm / Stop / Move Forward.";
 
     return el("div", { class: "card cardPad" }, [
-      sectionLabel("Next"),
+      sectionLabel("Choose"),
       el("p", { class: "p" }, [line]),
 
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
-        el("button", {
-          class: "btn btnPrimary",
-          type: "button",
-          onClick: () => {
-            // If stabilized today, we allow Today’s Plan to open at Step 2 without marking Step 1 done.
-            if (stabilizedToday) {
-              try { setNextIntent("today_plan_step2"); } catch {}
-            }
-            location.hash = "#/green/today";
+        el(
+          "button",
+          {
+            class: "btn btnPrimary",
+            type: "button",
+            onClick: () => {
+              // If stabilized today, allow Today’s Plan to open at Step 2 without marking Step 1 done.
+              if (stabilizedToday) {
+                try {
+                  setNextIntent("today_plan_step2");
+                } catch {}
+              }
+              location.hash = "#/green/today";
+            },
           },
-        }, ["Today’s Plan"]),
-        el("button", {
-          class: "btn",
-          type: "button",
-          onClick: () => (location.hash = "#/green/move"),
-        }, ["Move Forward"]),
+          ["Today’s Plan"]
+        ),
+        el(
+          "button",
+          {
+            class: "btn",
+            type: "button",
+            onClick: () => (location.hash = "#/green/move"),
+          },
+          ["Move Forward"]
+        ),
       ]),
 
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
@@ -104,8 +114,8 @@ export function renderNextStep() {
       ]),
 
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
-        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/reflect") }, ["Clarify"]),
         el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/red/emergency") }, ["Emergency"]),
+        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Home"]),
       ]),
     ]);
   }
