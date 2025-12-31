@@ -19,7 +19,7 @@ function nowISO() {
   return new Date().toISOString();
 }
 
-// Uses device-local day stamp. (If the device is set to EST, this matches EST.)
+// Uses device-local day stamp.
 function localDayStamp() {
   const d = new Date();
   const y = d.getFullYear();
@@ -29,33 +29,40 @@ function localDayStamp() {
 }
 
 function normalizeKind(kind) {
-  // Light normalization so older logs don’t break newer logic.
   const k = String(kind || "").trim();
+
+  // Broad aliasing for older builds / experiments.
   const map = {
-    // historical / aliasing
+    // Stop Urge
     stopUrge: "stop_urge",
     stopUrge_open: "stop_urge_open",
+    stopUrge_start: "stop_urge_start",
+    stopUrge_stop: "stop_urge_stop",
+
+    // Move Forward
     moveForward: "move_forward",
-    move_forward_open: "move_forward_open",
+    moveForward_open: "move_forward_open",
+    moveForward_start: "move_forward_start",
+    moveForward_stop: "move_forward_stop",
+    moveForward_extend: "move_forward_extend",
+    moveForward_end: "move_forward_end",
+
+    // Emergency
     emergency: "emergency_open",
     emergency_open: "emergency_open",
   };
+
   return map[k] || k;
 }
 
 function shouldGrantStabilizeCredit(entry) {
   const kind = normalizeKind(entry?.kind);
 
-  // Stabilize credit should apply to ANY “stabilize / regulate / pause / move” action.
-  // This is what makes the “Step 2 available” behavior translate across starting points.
+  // This credit is used as a soft permission (e.g., Today Plan Step 2 availability).
+  // Keep conservative but inclusive across starting points.
   if (kind === "calm") return true;
   if (kind === "stop_urge") return true;
   if (kind === "move_forward") return true;
-
-  // Optional: if you ever want “opened” to count, add:
-  // if (kind === "stop_urge_open") return true;
-  // if (kind === "move_forward_open") return true;
-
   return false;
 }
 
@@ -74,21 +81,16 @@ export function readLog() {
 export function appendLog(entry) {
   const e = entry && typeof entry === "object" ? { ...entry } : { kind: "unknown" };
 
-  // Normalize / guard
   e.kind = normalizeKind(e.kind);
   if (!e.when) e.when = nowISO();
 
   const log = readLog();
   log.unshift(e);
 
-  // Persist log (cap)
   try {
     localStorage.setItem(KEY_LOG, JSON.stringify(log.slice(0, 300)));
-  } catch {
-    // ignore storage failures (private mode / quota)
-  }
+  } catch {}
 
-  // Grant stabilize credit (best-effort, never throws)
   if (shouldGrantStabilizeCredit(e)) {
     try {
       localStorage.setItem(KEY_STABILIZE_DAY, localDayStamp());
@@ -120,14 +122,10 @@ export function clearStabilizeCredit() {
 // ---------- intent handoff ----------
 export function setNextIntent(intent) {
   try {
-    localStorage.setItem(
-      KEY_NEXT_INTENT,
-      JSON.stringify({ intent: String(intent || ""), ts: Date.now() })
-    );
+    localStorage.setItem(KEY_NEXT_INTENT, JSON.stringify({ intent: String(intent || ""), ts: Date.now() }));
   } catch {}
 }
 
-// One-time read+clear. Optional max age so stale intents don’t misroute users.
 export function consumeNextIntent(maxAgeMinutes = 30) {
   try {
     const raw = localStorage.getItem(KEY_NEXT_INTENT);
@@ -147,7 +145,6 @@ export function consumeNextIntent(maxAgeMinutes = 30) {
 
     return intent;
   } catch {
-    // If parse fails, clear it so it doesn’t keep breaking.
     try {
       localStorage.removeItem(KEY_NEXT_INTENT);
     } catch {}
