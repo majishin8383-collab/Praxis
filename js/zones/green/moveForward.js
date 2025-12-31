@@ -118,6 +118,7 @@ export function renderMoveForward() {
   let tick = null;
 
   // UI state
+  // ✅ Option C: Quick Start and All Ladders are mutually exclusive views
   let showAllLadders = false;
 
   // bookkeeping
@@ -148,20 +149,6 @@ export function renderMoveForward() {
     rerender();
   }
 
-  function logCanonicalMoveForward({ ladder, stoppedEarlyFlag, elapsedSecValue }) {
-    // Canonical event used by storage.js to grant stabilize credit.
-    safeAppendLog({
-      kind: "move_forward",
-      when: nowISO(),
-      ladderId: ladder?.id || selectedLadderId,
-      ladderTitle: ladder?.title || findLadder(selectedLadderId).title,
-      minutes: durationMin,
-      stoppedEarly: !!stoppedEarlyFlag,
-      elapsedSec: Math.max(0, Math.round(Number(elapsedSecValue || 0))),
-      build: BUILD,
-    });
-  }
-
   function startSelected() {
     const ladder = findLadder(selectedLadderId);
 
@@ -185,12 +172,10 @@ export function renderMoveForward() {
     stopTick();
     tick = setInterval(() => {
       if (!running) return;
-
       if (endAt - Date.now() <= 0) {
         stopTick();
         running = false;
 
-        // End telemetry
         safeAppendLog({
           kind: "move_forward_end",
           when: nowISO(),
@@ -200,9 +185,6 @@ export function renderMoveForward() {
           elapsedSec: durationMin * 60,
           build: BUILD,
         });
-
-        // ✅ Canonical completion event (for stabilize credit)
-        logCanonicalMoveForward({ ladder, stoppedEarlyFlag: false, elapsedSecValue: durationMin * 60 });
 
         mode = "done";
         rerender();
@@ -253,9 +235,6 @@ export function renderMoveForward() {
       build: BUILD,
     });
 
-    // ✅ Canonical attempt event (still grants credit; “attempt counts”)
-    logCanonicalMoveForward({ ladder: findLadder(selectedLadderId), stoppedEarlyFlag: true, elapsedSecValue: elapsedSec });
-
     mode = "done";
     rerender();
   }
@@ -273,7 +252,7 @@ export function renderMoveForward() {
     ]);
   }
 
-  function ladderTile(l) {
+  function ladderTile(l, labelOverride = null) {
     return el(
       "button",
       {
@@ -284,7 +263,7 @@ export function renderMoveForward() {
       [
         el("div", { class: "tileTop" }, [
           el("div", {}, [
-            el("div", { class: "tileTitle" }, [l.title]),
+            el("div", { class: "tileTitle" }, [labelOverride || l.title]),
             el("div", { class: "tileSub" }, [`${l.minutes} min • ${l.desc}`]),
           ]),
           el("div", { class: "zoneDot dotGreen" }, []),
@@ -295,16 +274,19 @@ export function renderMoveForward() {
   }
 
   function quickStartCard() {
+    // Curated set only
     const recommended = ["walk", "micro_task", "reset_body"];
     const lastId = getLastLadder();
-    const showResume = !!lastId && recommended.includes(lastId) === false;
+
+    // If last ladder exists and is NOT in the recommended set, show it as a 4th option.
+    const showResume = !!lastId && !recommended.includes(lastId);
 
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Quick start"),
       el("p", { class: "small" }, ["Pick one. A short timer will hold it."]),
       el("div", { class: "flowShell", style: "margin-top:10px" }, [
         ...recommended.map((id) => ladderTile(findLadder(id))),
-        showResume ? ladderTile(findLadder(lastId)) : null,
+        showResume ? ladderTile(findLadder(lastId), "Resume last ladder") : null,
       ].filter(Boolean)),
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
         el(
@@ -313,11 +295,12 @@ export function renderMoveForward() {
             class: "btn",
             type: "button",
             onClick: () => {
-              showAllLadders = !showAllLadders;
+              // ✅ Switch views (no duplication): Quick Start disappears, All Ladders appears
+              showAllLadders = true;
               rerender();
             },
           },
-          [showAllLadders ? "Hide ladders" : "More ladders"]
+          ["More ladders"]
         ),
         el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/today") }, ["Today’s Plan"]),
       ]),
@@ -325,11 +308,26 @@ export function renderMoveForward() {
   }
 
   function allLaddersCard() {
-    if (!showAllLadders) return null;
     return el("div", { class: "card cardPad" }, [
       sectionLabel("All ladders"),
-      el("p", { class: "small" }, ["Pick a different kind of motion."]),
+      el("p", { class: "small" }, ["Pick the kind of motion you need."]),
       el("div", { class: "flowShell", style: "margin-top:10px" }, LADDERS.map((l) => ladderTile(l))),
+      el("div", { class: "btnRow", style: "margin-top:10px" }, [
+        el(
+          "button",
+          {
+            class: "btn",
+            type: "button",
+            onClick: () => {
+              // ✅ Switch back
+              showAllLadders = false;
+              rerender();
+            },
+          },
+          ["Show fewer ladders"]
+        ),
+        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/today") }, ["Today’s Plan"]),
+      ]),
     ]);
   }
 
@@ -350,7 +348,18 @@ export function renderMoveForward() {
       ),
       el("div", { class: "btnRow", style: "margin-top:12px" }, [
         el("button", { class: "btn btnPrimary", type: "button", onClick: startSelected }, [`Start • ${ladder.minutes} min`]),
-        el("button", { class: "btn", type: "button", onClick: () => { mode = "pick"; rerender(); } }, ["Back"]),
+        el(
+          "button",
+          {
+            class: "btn",
+            type: "button",
+            onClick: () => {
+              mode = "pick";
+              rerender();
+            },
+          },
+          ["Back"]
+        ),
       ]),
       el("p", { class: "small", style: "margin-top:10px" }, ["Stopping early is allowed."]),
     ]);
@@ -374,17 +383,24 @@ export function renderMoveForward() {
   function closureCard() {
     if (mode !== "done") return null;
 
-    // Primary completion state for Move Forward is READINESS.
-    // Closure must: name state -> return agency -> release.
     const line = stoppedEarly ? `Some motion happened (${elapsedSec}s).` : "The timer ended.";
 
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Readiness"),
       el("p", { class: "p" }, [line]),
       el("div", { class: "btnRow" }, [
-        el("button", { class: "btn btnPrimary", type: "button", onClick: () => { mode = "pick"; rerender(); } }, [
-          "Choose another ladder",
-        ]),
+        el(
+          "button",
+          {
+            class: "btn btnPrimary",
+            type: "button",
+            onClick: () => {
+              mode = "pick";
+              rerender();
+            },
+          },
+          ["Choose another ladder"]
+        ),
         el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Home"]),
       ]),
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
@@ -399,9 +415,8 @@ export function renderMoveForward() {
     wrap.appendChild(header());
 
     if (mode === "pick") {
-      wrap.appendChild(quickStartCard());
-      const all = allLaddersCard();
-      if (all) wrap.appendChild(all);
+      // ✅ Mutually exclusive views (no duplicates)
+      wrap.appendChild(showAllLadders ? allLaddersCard() : quickStartCard());
       return;
     }
 
