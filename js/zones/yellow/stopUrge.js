@@ -1,9 +1,8 @@
-// js/zones/yellow/stopUrge.js  (FULL REPLACEMENT)
-
-import { appendLog, grantStabilizeCreditToday, setNextIntent } from "../../storage.js";
+// js/zones/yellow/stopUrge.js (FULL REPLACEMENT)
+import { appendLog, grantStabilizeCreditToday } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "SU-9";
+const BUILD = "SU-10";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -23,7 +22,16 @@ function el(tag, attrs = {}, children = []) {
 }
 
 const nowISO = () => new Date().toISOString();
-function safeAppendLog(entry) { try { appendLog(entry); } catch {} }
+function safeAppendLog(entry) {
+  try {
+    appendLog(entry);
+  } catch {}
+}
+
+function sectionLabel(text) {
+  // Avoid "badge" UI to comply with GOVERNANCE.md
+  return el("div", { class: "small", style: "opacity:.85;font-weight:800;letter-spacing:.02em;" }, [text]);
+}
 
 function copyToClipboard(text) {
   if (navigator.clipboard?.writeText) {
@@ -41,8 +49,8 @@ const SCRIPT_SETS = [
     variants: [
       "Got your message. I’m not available right now. I’ll reply later.",
       "I saw this. I can’t talk right now. I’ll respond later.",
-      "I’m tied up right now. I’ll get back to you later."
-    ]
+      "I’m tied up right now. I’ll get back to you later.",
+    ],
   },
   {
     id: "boundary",
@@ -51,8 +59,8 @@ const SCRIPT_SETS = [
     variants: [
       "I’m taking space and won’t be engaging. Please respect that.",
       "I’m not available for this conversation. Please stop contacting me about it.",
-      "I’m stepping back. I won’t respond further right now."
-    ]
+      "I’m stepping back. I won’t respond further right now.",
+    ],
   },
   {
     id: "logistics",
@@ -61,8 +69,8 @@ const SCRIPT_SETS = [
     variants: [
       "I can handle logistics. I’m not discussing anything else.",
       "I’ll respond only to practical logistics. I’m not discussing the relationship.",
-      "If this is about logistics, I can reply. Otherwise I’m not engaging."
-    ]
+      "If this is about logistics, I can reply. Otherwise I’m not engaging.",
+    ],
   },
   {
     id: "deescalate",
@@ -71,9 +79,9 @@ const SCRIPT_SETS = [
     variants: [
       "I’m not going to argue. I’m stepping away for now.",
       "This isn’t productive. I’m going to pause and revisit later.",
-      "I’m going to end this conversation now."
-    ]
-  }
+      "I’m going to end this conversation now.",
+    ],
+  },
 ];
 
 export function renderStopUrge() {
@@ -90,14 +98,13 @@ export function renderStopUrge() {
   let selectedSetId = "neutral";
   let selectedVariantIndex = 0;
 
-  // modes: idle | running | pause_done | early_stop | logged
+  // modes: idle | running | checkin | closed
   let mode = "idle";
-  let lastOutcome = null; // "passed" | "still_present" | null
 
-  // early stop telemetry
+  // outcomes
+  let lastOutcome = null; // "passed" | "still_present" | null
   let stoppedEarly = false;
-  let earlyStopElapsedSec = 0;
-  let earlyStopReason = null; // "safe" | "bailed" | null
+  let elapsedSec = 0;
 
   safeAppendLog({ kind: "stop_urge_open", when: nowISO(), build: BUILD });
 
@@ -106,33 +113,31 @@ export function renderStopUrge() {
     tick = null;
   }
 
+  function remainingMs() {
+    return clamp(endAt - Date.now(), 0, durationMin * 60 * 1000);
+  }
+
   function updateTimerUI() {
-    const remaining = clamp(endAt - Date.now(), 0, durationMin * 60 * 1000);
-    const pct = 100 * (1 - remaining / (durationMin * 60 * 1000));
     const readout = wrap.querySelector("[data-timer-readout]");
-    const fill = wrap.querySelector("[data-progress-fill]");
-    if (readout) readout.textContent = formatMMSS(remaining);
-    if (fill) fill.style.width = `${pct.toFixed(1)}%`;
+    if (readout) readout.textContent = formatMMSS(remainingMs());
   }
 
   function selectedScriptText() {
-    const set = SCRIPT_SETS.find(s => s.id === selectedSetId) || SCRIPT_SETS[0];
+    const set = SCRIPT_SETS.find((s) => s.id === selectedSetId) || SCRIPT_SETS[0];
     return {
       setId: set.id,
       setTitle: set.title,
       optionIndex: selectedVariantIndex,
       text: set.variants[selectedVariantIndex] || set.variants[0],
-      desc: set.desc
+      desc: set.desc,
     };
   }
 
   function startPause(min) {
     running = true;
     lastOutcome = null;
-
     stoppedEarly = false;
-    earlyStopElapsedSec = 0;
-    earlyStopReason = null;
+    elapsedSec = 0;
 
     durationMin = min;
     startAt = Date.now();
@@ -143,11 +148,10 @@ export function renderStopUrge() {
     stopTick();
     tick = setInterval(() => {
       if (!running) return;
-      const remaining = endAt - Date.now();
-      if (remaining <= 0) {
+      if (endAt - Date.now() <= 0) {
         stopTick();
         running = false;
-        mode = "pause_done";
+        mode = "checkin";
         rerender();
       } else {
         updateTimerUI();
@@ -159,7 +163,7 @@ export function renderStopUrge() {
   }
 
   function extend(extraMin) {
-    const remaining = clamp(endAt - Date.now(), 0, durationMin * 60 * 1000);
+    const remaining = remainingMs();
     const newRemaining = remaining + extraMin * 60 * 1000;
     durationMin = Math.ceil(newRemaining / (60 * 1000));
     endAt = Date.now() + newRemaining;
@@ -173,24 +177,24 @@ export function renderStopUrge() {
   function stopEarly() {
     const now = Date.now();
     const elapsedMs = startAt ? clamp(now - startAt, 0, durationMin * 60 * 1000) : 0;
-    const remainingMs = clamp(endAt - now, 0, durationMin * 60 * 1000);
 
     stopTick();
     running = false;
 
     stoppedEarly = true;
-    earlyStopElapsedSec = Math.max(0, Math.round(elapsedMs / 1000));
+    elapsedSec = Math.max(0, Math.round(elapsedMs / 1000));
 
     safeAppendLog({
       kind: "stop_urge_stop",
       when: nowISO(),
       minutesPlanned: durationMin,
-      elapsedSec: Math.round(elapsedMs / 1000),
-      remainingSec: Math.round(remainingMs / 1000),
-      build: BUILD
+      stoppedEarly: true,
+      elapsedSec,
+      build: BUILD,
     });
 
-    mode = "early_stop";
+    // Early stop is valid use: go to check-in without interrogation
+    mode = "checkin";
     rerender();
   }
 
@@ -205,17 +209,18 @@ export function renderStopUrge() {
       outcome, // passed | still_present
       note,
       stoppedEarly,
-      earlyStopReason,
-      earlyStopElapsedSec,
+      elapsedSec,
       scriptSetId: s.setId,
       scriptSetTitle: s.setTitle,
       scriptOption: (s.optionIndex ?? 0) + 1,
-      build: BUILD
+      build: BUILD,
     });
 
-    // ✅ stabilize credit only on "passed" (soft guidance)
+    // Stabilize credit: optional, only when the urge passes
     if (outcome === "passed") {
-      try { grantStabilizeCreditToday(); } catch {}
+      try {
+        grantStabilizeCreditToday();
+      } catch {}
     }
   }
 
@@ -223,41 +228,50 @@ export function renderStopUrge() {
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["Stop the Urge"]),
-        el("p", { class: "p" }, ["Pause. Add friction. Protect your future self."]),
-        el("div", { class: "small" }, [`Build ${BUILD}`]),
-      ]),
+        el("p", { class: "p" }, ["Pause. Add friction."]),
+        String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
+      ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
-        el("button", {
-          class: "linkBtn",
-          type: "button",
-          onClick: () => { running = false; stopTick(); location.hash = "#/home"; }
-        }, ["Reset"]),
-      ])
+        el(
+          "button",
+          {
+            class: "linkBtn",
+            type: "button",
+            onClick: () => {
+              running = false;
+              stopTick();
+              location.hash = "#/home";
+            },
+          },
+          ["Home"]
+        ),
+      ]),
     ]);
   }
 
   function timerPanel() {
     if (!running) {
-      return el("div", { class: "flowShell" }, [
-        el("div", { class: "badge" }, ["Default pause: 2 minutes"]),
-        el("p", { class: "p" }, ["Don’t send anything during the pause. Let the urge peak and fall."]),
+      return el("div", { class: "card cardPad" }, [
+        sectionLabel("Pause"),
+        el("p", { class: "p" }, ["A short window. No sending."]),
         el("div", { class: "btnRow" }, [
-          el("button", { class: "btn btnPrimary", type: "button", onClick: () => startPause(2) }, ["Start 2-minute pause"]),
+          el("button", { class: "btn btnPrimary", type: "button", onClick: () => startPause(2) }, ["Start 2 min"]),
           el("button", { class: "btn", type: "button", onClick: () => startPause(5) }, ["Start 5 min"]),
           el("button", { class: "btn", type: "button", onClick: () => startPause(10) }, ["Start 10 min"]),
         ]),
       ]);
     }
 
-    const remaining = clamp(endAt - Date.now(), 0, durationMin * 60 * 1000);
-    return el("div", { class: "timerBox" }, [
-      el("div", { class: "badge" }, [`Pause active • ${durationMin} min window`]),
-      el("div", { class: "timerReadout", "data-timer-readout": "1" }, [formatMMSS(remaining)]),
-      el("div", { class: "progressBar" }, [el("div", { class: "progressFill", "data-progress-fill": "1" }, [])]),
-      el("div", { class: "btnRow" }, [
-        el("button", { class: "btn", type: "button", onClick: () => extend(5) }, ["+5 min"]),
-        el("button", { class: "btn", type: "button", onClick: () => extend(10) }, ["+10 min"]),
-        el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"]),
+    return el("div", { class: "card cardPad" }, [
+      sectionLabel(`Active • ${durationMin} min`),
+      el("div", { class: "timerBox" }, [
+        el("div", { class: "timerReadout", "data-timer-readout": "1" }, [formatMMSS(remainingMs())]),
+        // NOTE: progress bars intentionally removed per GOVERNANCE.md
+        el("div", { class: "btnRow" }, [
+          el("button", { class: "btn", type: "button", onClick: () => extend(5) }, ["+5 min"]),
+          el("button", { class: "btn", type: "button", onClick: () => extend(10) }, ["+10 min"]),
+          el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"]),
+        ]),
       ]),
     ]);
   }
@@ -265,138 +279,156 @@ export function renderStopUrge() {
   function scriptsPanel() {
     const s = selectedScriptText();
 
-    const setButtons = el("div", { class: "btnRow" }, SCRIPT_SETS.map(set =>
-      el("button", {
-        class: `btn ${set.id === selectedSetId ? "btnPrimary" : ""}`.trim(),
-        type: "button",
-        onClick: () => { selectedSetId = set.id; selectedVariantIndex = 0; rerender(); }
-      }, [set.title])
-    ));
+    const setButtons = el(
+      "div",
+      { class: "btnRow" },
+      SCRIPT_SETS.map((set) =>
+        el(
+          "button",
+          {
+            class: `btn ${set.id === selectedSetId ? "btnPrimary" : ""}`.trim(),
+            type: "button",
+            onClick: () => {
+              selectedSetId = set.id;
+              selectedVariantIndex = 0;
+              rerender();
+            },
+          },
+          [set.title]
+        )
+      )
+    );
 
-    const preview = el("div", {
-      class: "card cardPad",
-      style: "background:rgba(255,255,255,.04);border:1px solid var(--line);"
-    }, [
-      el("div", { class: "badge" }, ["Preview"]),
-      el("p", { class: "p", style: "margin-top:8px;font-weight:800;color:var(--text);" }, [s.text]),
-      el("div", { class: "btnRow" }, [
-        el("button", { class: "btn btnPrimary", type: "button", onClick: () => copyToClipboard(s.text) }, ["Copy this"]),
-      ]),
-      el("p", { class: "small", style: "margin-top:8px" }, ["If copy is blocked on mobile, it will pop up so you can copy manually."])
-    ]);
+    const preview = el(
+      "div",
+      { class: "card cardPad", style: "background:rgba(255,255,255,.04);border:1px solid var(--line);" },
+      [
+        sectionLabel("Preview"),
+        el("p", { class: "p", style: "margin-top:8px;font-weight:800;color:var(--text);" }, [s.text]),
+        el("div", { class: "btnRow" }, [
+          el("button", { class: "btn btnPrimary", type: "button", onClick: () => copyToClipboard(s.text) }, ["Copy"]),
+        ]),
+        el("p", { class: "small", style: "margin-top:8px" }, [
+          "If copy is blocked on mobile, it will pop up so you can copy manually.",
+        ]),
+      ]
+    );
 
     const variants = el("div", { class: "flowShell" }, [
       el("h2", { class: "h2" }, ["Options"]),
       el("p", { class: "small" }, [s.desc]),
-      el("div", { class: "btnRow" }, (SCRIPT_SETS.find(x => x.id === selectedSetId)?.variants || []).map((_, idx) =>
-        el("button", {
-          class: `btn ${idx === selectedVariantIndex ? "btnPrimary" : ""}`.trim(),
-          type: "button",
-          onClick: () => { selectedVariantIndex = idx; rerender(); }
-        }, [`Option ${idx + 1}`])
-      )),
+      el(
+        "div",
+        { class: "btnRow" },
+        (SCRIPT_SETS.find((x) => x.id === selectedSetId)?.variants || []).map((_, idx) =>
+          el(
+            "button",
+            {
+              class: `btn ${idx === selectedVariantIndex ? "btnPrimary" : ""}`.trim(),
+              type: "button",
+              onClick: () => {
+                selectedVariantIndex = idx;
+                rerender();
+              },
+            },
+            [`Option ${idx + 1}`]
+          )
+        )
+      ),
     ]);
 
-    return el("div", { class: "flowShell" }, [
-      el("h2", { class: "h2" }, ["Scripts"]),
-      setButtons,
-      preview,
-      variants,
+    return el("div", { class: "flowShell" }, [el("h2", { class: "h2" }, ["Scripts"]), setButtons, preview, variants]);
+  }
+
+  function closureCard() {
+    if (mode !== "checkin" && mode !== "closed") return null;
+
+    // Primary completion state for Stop the Urge is RELIEF.
+    // Closure must: name state -> return agency -> release.
+    const line =
+      lastOutcome === "passed"
+        ? "Some space opened up."
+        : lastOutcome === "still_present"
+        ? "The pattern slowed."
+        : "A pause happened.";
+
+    const nextRow =
+      lastOutcome === "still_present"
+        ? el("div", { class: "btnRow" }, [
+            el("button", { class: "btn btnPrimary", type: "button", onClick: () => startPause(10) }, ["Pause 10 min"]),
+            el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/yellow/calm") }, [
+              "Calm Me Down",
+            ]),
+            el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/red/emergency") }, [
+              "Emergency",
+            ]),
+          ])
+        : el("div", { class: "btnRow" }, [
+            el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/move") }, [
+              "Move Forward",
+            ]),
+            el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/today") }, [
+              "Today’s Plan",
+            ]),
+          ]);
+
+    return el("div", { class: "card cardPad" }, [
+      sectionLabel("Relief"),
+      el("p", { class: "p" }, [line]),
+      el("div", { class: "btnRow" }, [
+        el(
+          "button",
+          {
+            class: "btn btnPrimary",
+            type: "button",
+            onClick: () => {
+              mode = "idle";
+              lastOutcome = null;
+              rerender();
+            },
+          },
+          ["Run again"]
+        ),
+        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Home"]),
+      ]),
+      nextRow,
     ]);
   }
 
-  function statusCard() {
-    if (mode === "early_stop") {
-      return el("div", { class: "card cardPad" }, [
-        el("div", { class: "badge" }, ["Stopped early"]),
-        el("p", { class: "p" }, [`You paused for ${earlyStopElapsedSec}s. Why are you stopping?`]),
-        el("div", { class: "btnRow" }, [
-          el("button", {
+  function checkinCard() {
+    if (mode !== "checkin") return null;
+
+    return el("div", { class: "card cardPad" }, [
+      sectionLabel("Check-in"),
+      el("p", { class: "p" }, ["What’s true right now?"]),
+      el("div", { class: "btnRow" }, [
+        el(
+          "button",
+          {
             class: "btn btnPrimary",
             type: "button",
-            onClick: () => { earlyStopReason = "safe"; mode = "pause_done"; rerender(); }
-          }, ["It dropped / situation ended"]),
-          el("button", {
+            onClick: () => {
+              logOutcome("passed", "Urge passed.");
+              mode = "closed";
+              rerender();
+            },
+          },
+          ["Urge passed"]
+        ),
+        el(
+          "button",
+          {
             class: "btn",
             type: "button",
             onClick: () => {
-              earlyStopReason = "bailed";
-              logOutcome("still_present", "Stopped early (still present).");
-              mode = "logged";
+              logOutcome("still_present", "Urge still present.");
+              mode = "closed";
               rerender();
-            }
-          }, ["I’m still hot / about to act"]),
-        ]),
-        el("p", { class: "small", style: "margin-top:10px" }, ["Honesty helps Praxis guide you correctly."]),
-      ]);
-    }
-
-    if (mode === "pause_done") {
-      return el("div", { class: "card cardPad" }, [
-        el("div", { class: "badge" }, [stoppedEarly ? "Check-in" : "Pause complete"]),
-        el("p", { class: "p" }, ["Choose what’s true right now."]),
-        el("div", { class: "btnRow" }, [
-          el("button", {
-            class: "btn btnPrimary",
-            type: "button",
-            onClick: () => { logOutcome("passed", "Urge passed."); mode = "logged"; rerender(); }
-          }, ["Urge passed"]),
-          el("button", {
-            class: "btn",
-            type: "button",
-            onClick: () => { logOutcome("still_present", "Urge still present."); mode = "logged"; rerender(); }
-          }, ["Still present"]),
-        ]),
-      ]);
-    }
-
-    if (mode === "logged") {
-      const passed = lastOutcome === "passed";
-      const still = lastOutcome === "still_present";
-
-      const headline =
-        still && earlyStopReason === "bailed"
-          ? "Don’t improvise. Change state or add time."
-          : passed
-          ? "Good. Convert that win into motion."
-          : still
-          ? "Okay. Don’t improvise. Change state or add more time."
-          : "Logged. Choose the next right action.";
-
-      return el("div", { class: "card cardPad" }, [
-        el("div", { class: "badge" }, ["Next move"]),
-        el("p", { class: "p" }, [headline]),
-        el("div", { class: "btnRow" }, [
-          passed
-            ? el("button", {
-                class: "btn btnPrimary",
-                type: "button",
-                onClick: () => {
-                  // ✅ handoff: if they go to Today’s Plan now, default to Step 2
-                  try { setNextIntent("today_plan_step2"); } catch {}
-                  location.hash = "#/green/today";
-                }
-              }, ["Today’s Plan"])
-            : el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/yellow/calm") }, ["Calm Me Down"]),
-
-          passed
-            ? el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/move") }, ["Move Forward"])
-            : el("button", { class: "btn", type: "button", onClick: () => startPause(10) }, ["Start 10 min"]),
-
-          el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Back to Reset"]),
-        ]),
-        el("div", { class: "btnRow" }, [
-          el("button", { class: "btn", type: "button", onClick: () => { mode = "idle"; rerender(); } }, ["Run again"]),
-        ]),
-      ]);
-    }
-
-    // idle / running (no extra status box needed while running)
-    if (mode === "running") return null;
-
-    return el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["When you’re ready"]),
-      el("p", { class: "p" }, ["Start a pause. If needed, use a script."]),
+            },
+          },
+          ["Still present"]
+        ),
+      ]),
     ]);
   }
 
@@ -404,17 +436,15 @@ export function renderStopUrge() {
     wrap.innerHTML = "";
     wrap.appendChild(header());
 
-    const pauseCard = el("div", { class: "card cardPad" }, [
-      el("h2", { class: "h2" }, ["Pause"]),
-      timerPanel(),
-    ]);
+    wrap.appendChild(timerPanel());
 
-    wrap.appendChild(pauseCard);
+    const chk = checkinCard();
+    if (chk) wrap.appendChild(chk);
 
-    const status = statusCard();
-    if (status) wrap.appendChild(status);
+    const cl = closureCard();
+    if (cl) wrap.appendChild(cl);
 
-    // ✅ Keep UX clean: no session history shown
+    // scripts are optional support; keep visible but not pushy
     wrap.appendChild(el("div", { class: "card cardPad" }, [scriptsPanel()]));
 
     if (running) updateTimerUI();
