@@ -2,7 +2,7 @@
 import { appendLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "MF-8";
+const BUILD = "MF-9";
 
 // light persistence so "Quick start" feels smart without being complex
 const KEY_LAST = "praxis_move_forward_last_v1";
@@ -25,6 +25,7 @@ function el(tag, attrs = {}, children = []) {
 }
 
 const nowISO = () => new Date().toISOString();
+
 function safeAppendLog(entry) {
   try {
     appendLog(entry);
@@ -43,6 +44,7 @@ function getLastLadder() {
     return "";
   }
 }
+
 function setLastLadder(id) {
   try {
     localStorage.setItem(KEY_LAST, String(id || ""));
@@ -146,6 +148,20 @@ export function renderMoveForward() {
     rerender();
   }
 
+  function logCanonicalMoveForward({ ladder, stoppedEarlyFlag, elapsedSecValue }) {
+    // Canonical event used by storage.js to grant stabilize credit.
+    safeAppendLog({
+      kind: "move_forward",
+      when: nowISO(),
+      ladderId: ladder?.id || selectedLadderId,
+      ladderTitle: ladder?.title || findLadder(selectedLadderId).title,
+      minutes: durationMin,
+      stoppedEarly: !!stoppedEarlyFlag,
+      elapsedSec: Math.max(0, Math.round(Number(elapsedSecValue || 0))),
+      build: BUILD,
+    });
+  }
+
   function startSelected() {
     const ladder = findLadder(selectedLadderId);
 
@@ -169,9 +185,12 @@ export function renderMoveForward() {
     stopTick();
     tick = setInterval(() => {
       if (!running) return;
+
       if (endAt - Date.now() <= 0) {
         stopTick();
         running = false;
+
+        // End telemetry
         safeAppendLog({
           kind: "move_forward_end",
           when: nowISO(),
@@ -181,6 +200,10 @@ export function renderMoveForward() {
           elapsedSec: durationMin * 60,
           build: BUILD,
         });
+
+        // ✅ Canonical completion event (for stabilize credit)
+        logCanonicalMoveForward({ ladder, stoppedEarlyFlag: false, elapsedSecValue: durationMin * 60 });
+
         mode = "done";
         rerender();
       } else {
@@ -230,6 +253,9 @@ export function renderMoveForward() {
       build: BUILD,
     });
 
+    // ✅ Canonical attempt event (still grants credit; “attempt counts”)
+    logCanonicalMoveForward({ ladder: findLadder(selectedLadderId), stoppedEarlyFlag: true, elapsedSecValue: elapsedSec });
+
     mode = "done";
     rerender();
   }
@@ -257,7 +283,10 @@ export function renderMoveForward() {
       },
       [
         el("div", { class: "tileTop" }, [
-          el("div", {}, [el("div", { class: "tileTitle" }, [l.title]), el("div", { class: "tileSub" }, [`${l.minutes} min • ${l.desc}`])]),
+          el("div", {}, [
+            el("div", { class: "tileTitle" }, [l.title]),
+            el("div", { class: "tileSub" }, [`${l.minutes} min • ${l.desc}`]),
+          ]),
           el("div", { class: "zoneDot dotGreen" }, []),
         ]),
         el("p", { class: "tileHint" }, ["Tap to choose"]),
