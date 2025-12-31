@@ -7,10 +7,8 @@
  */
 
 const KEY_LOG = "praxis_log_v1";
-
 // Stabilize credit (day stamp)
 const KEY_STABILIZE_DAY = "praxis_stabilize_credit_day_v1";
-
 // One-time routing hint between tools (intent handoff)
 const KEY_NEXT_INTENT = "praxis_next_intent_v1";
 
@@ -30,7 +28,6 @@ function localDayStamp() {
 
 function normalizeKind(kind) {
   const k = String(kind || "").trim();
-
   // Broad aliasing for older builds / experiments.
   const map = {
     // Stop Urge
@@ -50,14 +47,17 @@ function normalizeKind(kind) {
     // Emergency
     emergency: "emergency_open",
     emergency_open: "emergency_open",
-  };
 
+    // ✅ A3 back-compat aliases (older “end” kinds should behave like the canonical kinds)
+    calm_end: "calm",
+    stop_urge_end: "stop_urge",
+    move_forward_end: "move_forward",
+  };
   return map[k] || k;
 }
 
 function shouldGrantStabilizeCredit(entry) {
   const kind = normalizeKind(entry?.kind);
-
   // This credit is used as a soft permission (e.g., Today Plan Step 2 availability).
   // Keep conservative but inclusive across starting points.
   if (kind === "calm") return true;
@@ -80,7 +80,6 @@ export function readLog() {
 
 export function appendLog(entry) {
   const e = entry && typeof entry === "object" ? { ...entry } : { kind: "unknown" };
-
   e.kind = normalizeKind(e.kind);
   if (!e.when) e.when = nowISO();
 
