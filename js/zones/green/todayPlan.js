@@ -2,7 +2,7 @@
 import { appendLog, consumeNextIntent, hasStabilizeCreditToday } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "TP-17";
+const BUILD = "TP-16";
 
 // ✅ Must match Next Step + Move Forward + Router
 const KEY_PRIMARY = "praxis_today_plan_v5";
@@ -85,35 +85,33 @@ function pickDefaultTemplateId(stabilizedToday) {
   return stabilizedToday ? "stability" : "progress";
 }
 
-/**
- * Detect minutes from free-form text.
- * Supports:
- * - "10 min", "10mins", "10 minutes", "10m"
- * - "10–25 min" (range)
- * - ✅ "2-min" / "2–min" (hyphenated)
- * - "1 hour", "2hr"
- */
+// ✅ FIX: support "2-min Calm" (hyphen shorthand) + existing formats
 function detectMinutes(text) {
   if (!text) return null;
-  let t = String(text).toLowerCase();
+  const t = String(text).toLowerCase();
 
-  // ✅ normalize hyphen/en-dash forms like "2-min" -> "2 min"
-  // (do this before matching so templates like "2-min Calm" work)
-  t = t.replace(/(\d+)\s*[-–]\s*(min|mins|minute|minutes|m)\b/g, "$1 $2");
-  t = t.replace(/(\d+)\s*[-–]\s*(hour|hours|hr|hrs)\b/g, "$1 $2");
+  // 1) Hyphen shorthand: "2-min", "5-min"
+  const hyphen = t.match(/(\d+)\s*-\s*(min|mins|minute|minutes)\b/);
+  if (hyphen) {
+    const n = parseInt(hyphen[1], 10);
+    if (Number.isFinite(n) && n > 0) return Math.min(60, n);
+  }
 
+  // 2) Ranges: "10–25 min"
   const range = t.match(/(\d+)\s*[–-]\s*(\d+)\s*(min|mins|minute|minutes)\b/);
   if (range) {
     const n = parseInt(range[1], 10);
     if (Number.isFinite(n) && n > 0) return Math.min(60, n);
   }
 
+  // 3) Hours
   const hr = t.match(/(\d+)\s*(hour|hours|hr|hrs)\b/);
   if (hr) {
     const n = parseInt(hr[1], 10);
     if (Number.isFinite(n) && n > 0) return Math.min(180, n * 60);
   }
 
+  // 4) Plain minutes: "2 min", "5 minutes"
   const m = t.match(/(\d+)\s*(min|mins|minute|minutes|m)\b/);
   if (m) {
     const n = parseInt(m[1], 10);
@@ -125,6 +123,7 @@ function detectMinutes(text) {
 
 export function renderTodayPlan() {
   const wrap = el("div", { class: "flowShell" });
+
   let state = readState();
 
   // timer state
@@ -344,7 +343,7 @@ export function renderTodayPlan() {
       el("div", {}, [
         el("h1", { class: "h1" }, ["Today’s Plan"]),
         el("p", { class: "p" }, ["Three steps only. Do one step at a time."]),
-        String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
+        el("div", { class: "small" }, [`Build ${BUILD}`]),
         stabilizedToday && state.doneStep < 1 ? el("div", { class: "small" }, ["Stabilized today ✓ (Step 2 available)"]) : null,
       ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
@@ -355,22 +354,28 @@ export function renderTodayPlan() {
 
   function planTypeCard() {
     const currentLabel =
-      state.template && state.template !== "custom" ? getTemplateById(state.template)?.label || "Template" : "Custom";
+      state.template && state.template !== "custom"
+        ? getTemplateById(state.template)?.label || "Template"
+        : "Custom";
 
     return el("div", { class: "card cardPad" }, [
       el("div", { class: "badge" }, ["Plan type"]),
       el("p", { class: "small" }, [`Current: ${currentLabel}`]),
       el("div", { class: "btnRow" }, [
-        el("button", { class: "btn", type: "button", onClick: () => { showTemplates = !showTemplates; rerender(); } }, [
-          showTemplates ? "Hide" : "Change template",
-        ]),
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => { showTemplates = !showTemplates; rerender(); },
+        }, [showTemplates ? "Hide" : "Change template"]),
         el("button", { class: "btn", type: "button", onClick: resetPlan }, ["Reset plan"]),
       ]),
       showTemplates
         ? el("div", { class: "flowShell", style: "margin-top:10px" }, [
             el("div", { class: "badge" }, ["Templates"]),
             el("p", { class: "small" }, ["Switching template resets step progress (clean slate)."]),
-            el("div", { class: "btnRow" }, TEMPLATES.map((t) => el("button", { class: "btn", type: "button", onClick: () => applyTemplate(t) }, [t.label]))),
+            el("div", { class: "btnRow" }, TEMPLATES.map((t) =>
+              el("button", { class: "btn", type: "button", onClick: () => applyTemplate(t) }, [t.label])
+            )),
           ])
         : null,
     ].filter(Boolean));
@@ -413,9 +418,23 @@ export function renderTodayPlan() {
     const autoMin = detectMinutes(currentText) ?? 10;
 
     const stepButtons = el("div", { class: "btnRow" }, [
-      el("button", { class: `btn ${activeStep === 1 ? "btnPrimary" : ""}`.trim(), type: "button", onClick: () => { activeStep = 1; statusMode = "idle"; rerender(); } }, ["Step 1"]),
-      el("button", { class: `btn ${activeStep === 2 ? "btnPrimary" : ""}`.trim(), type: "button", onClick: () => { activeStep = 2; statusMode = "idle"; rerender(); }, disabled: canStartStep(2) ? false : true }, ["Step 2"]),
-      el("button", { class: `btn ${activeStep === 3 ? "btnPrimary" : ""}`.trim(), type: "button", onClick: () => { activeStep = 3; statusMode = "idle"; rerender(); }, disabled: canStartStep(3) ? false : true }, ["Step 3"]),
+      el("button", {
+        class: `btn ${activeStep === 1 ? "btnPrimary" : ""}`.trim(),
+        type: "button",
+        onClick: () => { activeStep = 1; statusMode = "idle"; rerender(); },
+      }, ["Step 1"]),
+      el("button", {
+        class: `btn ${activeStep === 2 ? "btnPrimary" : ""}`.trim(),
+        type: "button",
+        onClick: () => { activeStep = 2; statusMode = "idle"; rerender(); },
+        disabled: canStartStep(2) ? false : true,
+      }, ["Step 2"]),
+      el("button", {
+        class: `btn ${activeStep === 3 ? "btnPrimary" : ""}`.trim(),
+        type: "button",
+        onClick: () => { activeStep = 3; statusMode = "idle"; rerender(); },
+        disabled: canStartStep(3) ? false : true,
+      }, ["Step 3"]),
     ]);
 
     return el("div", { class: "card cardPad" }, [
@@ -426,7 +445,12 @@ export function renderTodayPlan() {
         ? el("p", { class: "small", style: "margin-top:8px" }, [`Timer: ${autoMin} min (auto)`])
         : el("p", { class: "small", style: "margin-top:8px" }, ["Timer: 10 min default (add a time to override)."]),
       el("div", { class: "btnRow" }, [
-        el("button", { class: "btn btnPrimary", type: "button", onClick: startTimerForStep, disabled: !(currentText && canStartStep(activeStep)) || running }, ["Start Step"]),
+        el("button", {
+          class: "btn btnPrimary",
+          type: "button",
+          onClick: startTimerForStep,
+          disabled: !(currentText && canStartStep(activeStep)) || running,
+        }, ["Start Step"]),
         el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/move") }, ["Move Forward"]),
       ]),
     ]);
@@ -439,8 +463,12 @@ export function renderTodayPlan() {
       el("div", { class: "badge" }, [`Step ${activeStep} • ${liveDurationMin} min`]),
       el("div", { class: "timerBox" }, [
         el("div", { class: "timerReadout", "data-timer-readout": "1" }, [formatMMSS(remaining)]),
-        el("div", { class: "progressBar" }, [el("div", { class: "progressFill", "data-progress-fill": "1" }, [])]),
-        el("div", { class: "btnRow" }, [el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"])]),
+        el("div", { class: "progressBar" }, [
+          el("div", { class: "progressFill", "data-progress-fill": "1" }, []),
+        ]),
+        el("div", { class: "btnRow" }, [
+          el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"]),
+        ]),
       ]),
     ]);
   }
@@ -455,7 +483,9 @@ export function renderTodayPlan() {
           el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/yellow/stop") }, ["Stop the Urge"]),
           el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/reflect") }, ["Clarify"]),
         ]),
-        el("div", { class: "btnRow" }, [el("button", { class: "btn", type: "button", onClick: () => { statusMode = "idle"; rerender(); } }, ["Back to plan"])]),
+        el("div", { class: "btnRow" }, [
+          el("button", { class: "btn", type: "button", onClick: () => { statusMode = "idle"; rerender(); } }, ["Back to plan"]),
+        ]),
       ]);
     }
 
@@ -501,7 +531,9 @@ export function renderTodayPlan() {
           el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/yellow/stop") }, ["Stop the Urge"]),
           el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/reflect") }, ["Clarify"]),
         ]),
-        el("div", { class: "btnRow" }, [el("button", { class: "btn", type: "button", onClick: () => { statusMode = "idle"; rerender(); } }, ["Back to plan"])]),
+        el("div", { class: "btnRow" }, [
+          el("button", { class: "btn", type: "button", onClick: () => { statusMode = "idle"; rerender(); } }, ["Back to plan"]),
+        ]),
       ]);
     }
 
@@ -510,7 +542,9 @@ export function renderTodayPlan() {
       const nextStep = Math.min(3, activeStep + 1);
       return el("div", { class: "card cardPad" }, [
         el("div", { class: "badge" }, ["Next move"]),
-        el("p", { class: "p" }, [good ? (activeStep < 3 ? `Go to Step ${nextStep}.` : "Plan complete. Reset or choose a new direction.") : "Change state, then try again."]),
+        el("p", { class: "p" }, [
+          good ? (activeStep < 3 ? `Go to Step ${nextStep}.` : "Plan complete. Reset or choose a new direction.") : "Change state, then try again.",
+        ]),
         el("div", { class: "btnRow" }, [
           good && activeStep < 3
             ? el("button", { class: "btn btnPrimary", type: "button", onClick: () => { activeStep = nextStep; statusMode = "idle"; rerender(); } }, [`Step ${nextStep}`])
@@ -529,10 +563,13 @@ export function renderTodayPlan() {
     wrap.appendChild(planTypeCard());
     wrap.appendChild(planCard());
     wrap.appendChild(primaryActionCard());
+
     const t = timerCard();
     if (t) wrap.appendChild(t);
+
     const s = statusCard();
     if (s) wrap.appendChild(s);
+
     if (running) updateTimerUI();
   }
 
