@@ -22,12 +22,18 @@ function el(tag, attrs = {}, children = []) {
   return node;
 }
 
+function label(text) {
+  // Governance-safe: no badges.
+  return el("div", { class: "small", style: "opacity:.85;font-weight:800;letter-spacing:.02em;" }, [text]);
+}
+
 function errorView(err, hash) {
   const msg = String(err?.message || err || "Unknown error");
   const stack = String(err?.stack || "");
+
   return el("div", { class: "flowShell" }, [
     el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["Route error"]),
+      label("Route error"),
       el("h2", { class: "h2" }, ["Something failed to load"]),
       el("p", { class: "p" }, [`Route: ${hash || "(none)"}`]),
       el("p", { class: "small" }, [msg]),
@@ -62,45 +68,38 @@ function normalizeHash(raw) {
   let h = String(raw || "").trim();
   if (!h) return "#/home";
 
-  // Some browsers/extensions can produce "#/path?x=y"
   const q = h.indexOf("?");
   if (q >= 0) h = h.slice(0, q);
 
-  // Ensure starts with "#/"
   if (h[0] !== "#") return "#/home";
-  if (!h.startsWith("#/")) {
-    // allow "#home" / "#home" style junk to fall back
-    return "#/home";
-  }
+  if (!h.startsWith("#/")) return "#/home";
 
-  // Aliases (keep minimal)
   const alias = {
     "#/reset": "#/home",
     "#/start": "#/home",
   };
+
   return alias[h] || h;
 }
 
 /**
- * Lazy route loader.
- * Each route returns a Promise that resolves to a DOM node.
- * If any module is missing or export mismatch happens, we catch and render an error view.
+ * ROUTES
+ * Public routes = home + the 5 tiles.
+ * Internal/legacy routes may exist for development, but must not be linked from Home.
  */
 const routes = new Map([
+  // ----- PUBLIC -----
   ["#/home", async () => (await import("./ui.js")).renderHome()],
-
   ["#/yellow/calm", async () => (await import("./zones/yellow/calm.js")).renderCalm()],
   ["#/yellow/stop", async () => (await import("./zones/yellow/stopUrge.js")).renderStopUrge()],
   ["#/red/emergency", async () => (await import("./zones/red/emergency.js")).renderEmergency()],
-
   ["#/green/move", async () => (await import("./zones/green/moveForward.js")).renderMoveForward()],
-  ["#/green/direction", async () => (await import("./zones/green/direction.js")).renderDirection()],
-  ["#/green/next", async () => (await import("./zones/green/nextStep.js")).renderNextStep()],
-
-  // kept as working tools / internals
-  ["#/green/focus", async () => (await import("./zones/green/focusSprint.js")).renderFocusSprint()],
   ["#/green/today", async () => (await import("./zones/green/todayPlan.js")).renderTodayPlan()],
 
+  // ----- INTERNAL / LEGACY (not linked from Home) -----
+  ["#/green/direction", async () => (await import("./zones/green/direction.js")).renderDirection()],
+  ["#/green/next", async () => (await import("./zones/green/nextStep.js")).renderNextStep()],
+  ["#/green/focus", async () => (await import("./zones/green/focusSprint.js")).renderFocusSprint()],
   ["#/reflect", async () => (await import("./zones/reflect.js")).renderReflect()],
   ["#/history", async () => (await import("./history.js")).renderHistory()],
   ["#/onboarding", async () => (await import("./onboarding.js")).renderOnboarding()],
@@ -130,7 +129,6 @@ export function initRouter() {
   homeBtn?.addEventListener("click", () => (location.hash = "#/home"));
 
   if (!location.hash) location.hash = "#/home";
-
   window.addEventListener("hashchange", onRouteChange);
   onRouteChange();
 }
