@@ -1,8 +1,8 @@
 // js/zones/yellow/stopUrge.js (FULL REPLACEMENT)
-import { appendLog, grantStabilizeCreditToday } from "../../storage.js";
+import { appendLog, setNextIntent } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "SU-10";
+const BUILD = "SU-11";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -22,6 +22,7 @@ function el(tag, attrs = {}, children = []) {
 }
 
 const nowISO = () => new Date().toISOString();
+
 function safeAppendLog(entry) {
   try {
     appendLog(entry);
@@ -180,7 +181,6 @@ export function renderStopUrge() {
 
     stopTick();
     running = false;
-
     stoppedEarly = true;
     elapsedSec = Math.max(0, Math.round(elapsedMs / 1000));
 
@@ -202,6 +202,7 @@ export function renderStopUrge() {
     lastOutcome = outcome;
     const s = selectedScriptText();
 
+    // Canonical event: storage.js decides stabilize credit.
     safeAppendLog({
       kind: "stop_urge",
       when: nowISO(),
@@ -216,10 +217,10 @@ export function renderStopUrge() {
       build: BUILD,
     });
 
-    // Stabilize credit: optional, only when the urge passes
+    // Non-pushy handoff: if the urge passed, make Today Plan open to Step 2 when they choose it.
     if (outcome === "passed") {
       try {
-        grantStabilizeCreditToday();
+        setNextIntent("today_plan_step2");
       } catch {}
     }
   }
@@ -340,8 +341,45 @@ export function renderStopUrge() {
     return el("div", { class: "flowShell" }, [el("h2", { class: "h2" }, ["Scripts"]), setButtons, preview, variants]);
   }
 
+  function checkinCard() {
+    if (mode !== "checkin") return null;
+
+    return el("div", { class: "card cardPad" }, [
+      sectionLabel("Check-in"),
+      el("p", { class: "p" }, ["What’s true right now?"]),
+      el("div", { class: "btnRow" }, [
+        el(
+          "button",
+          {
+            class: "btn btnPrimary",
+            type: "button",
+            onClick: () => {
+              logOutcome("passed", "Urge passed.");
+              mode = "closed";
+              rerender();
+            },
+          },
+          ["Urge passed"]
+        ),
+        el(
+          "button",
+          {
+            class: "btn",
+            type: "button",
+            onClick: () => {
+              logOutcome("still_present", "Urge still present.");
+              mode = "closed";
+              rerender();
+            },
+          },
+          ["Still present"]
+        ),
+      ]),
+    ]);
+  }
+
   function closureCard() {
-    if (mode !== "checkin" && mode !== "closed") return null;
+    if (mode !== "closed") return null;
 
     // Primary completion state for Stop the Urge is RELIEF.
     // Closure must: name state -> return agency -> release.
@@ -395,47 +433,9 @@ export function renderStopUrge() {
     ]);
   }
 
-  function checkinCard() {
-    if (mode !== "checkin") return null;
-
-    return el("div", { class: "card cardPad" }, [
-      sectionLabel("Check-in"),
-      el("p", { class: "p" }, ["What’s true right now?"]),
-      el("div", { class: "btnRow" }, [
-        el(
-          "button",
-          {
-            class: "btn btnPrimary",
-            type: "button",
-            onClick: () => {
-              logOutcome("passed", "Urge passed.");
-              mode = "closed";
-              rerender();
-            },
-          },
-          ["Urge passed"]
-        ),
-        el(
-          "button",
-          {
-            class: "btn",
-            type: "button",
-            onClick: () => {
-              logOutcome("still_present", "Urge still present.");
-              mode = "closed";
-              rerender();
-            },
-          },
-          ["Still present"]
-        ),
-      ]),
-    ]);
-  }
-
   function rerender() {
     wrap.innerHTML = "";
     wrap.appendChild(header());
-
     wrap.appendChild(timerPanel());
 
     const chk = checkinCard();
