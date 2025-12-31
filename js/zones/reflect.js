@@ -7,8 +7,7 @@ function el(tag, attrs = {}, children = []) {
     if (v === null || v === undefined || v === false) continue;
     if (k === "class") node.className = v;
     else if (k === "html") node.innerHTML = v;
-    else if (k.startsWith("on") && typeof v === "function")
-      node.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
     else if (v === true) node.setAttribute(k, "");
     else node.setAttribute(k, v);
   }
@@ -23,11 +22,7 @@ const nowISO = () => new Date().toISOString();
 
 function sectionLabel(text) {
   // Avoid "badge" UI to comply with GOVERNANCE.md
-  return el(
-    "div",
-    { class: "small", style: "opacity:.85;font-weight:800;letter-spacing:.02em;" },
-    [text]
-  );
+  return el("div", { class: "small", style: "opacity:.85;font-weight:800;letter-spacing:.02em;" }, [text]);
 }
 
 const STEP1 = [
@@ -45,13 +40,13 @@ const CONTROL = [
   { id: "nothing", label: "Nothing right now", hint: "It’s out of my hands today." },
 ];
 
-// ✅ Removed "Choose Today’s Direction" (dead route if we delete it)
+// NOTE: Direction + Next Step removed (redundant). Reflect should route to Today’s Plan.
 const MOVES = [
   { id: "pause24", label: "Do nothing for 24 hours", hint: "No messages. No checking. No analysis.", to: "#/home" },
   { id: "calm", label: "Calm first (2 minutes)", hint: "Reduce intensity, then decide.", to: "#/yellow/calm" },
   { id: "shield", label: "Stop the Urge", hint: "Pause and add friction.", to: "#/yellow/stop" },
   { id: "move", label: "Move Forward", hint: "Move first. Think later.", to: "#/green/move" },
-  { id: "today", label: "Today’s Plan", hint: "Three steps only. Start Step 1.", to: "#/green/today" },
+  { id: "today", label: "Today’s Plan", hint: "Three steps only. Do Step 1.", to: "#/green/today" },
 ];
 
 function lastClarify() {
@@ -89,10 +84,7 @@ export function renderReflect() {
   function tile({ label, hint }, onClick, dotClass = "dotGreen") {
     return el("button", { class: "actionTile", type: "button", onClick }, [
       el("div", { class: "tileTop" }, [
-        el("div", {}, [
-          el("div", { class: "tileTitle" }, [label]),
-          el("div", { class: "tileSub" }, [hint]),
-        ]),
+        el("div", {}, [el("div", { class: "tileTitle" }, [label]), el("div", { class: "tileSub" }, [hint])]),
         el("div", { class: `zoneDot ${dotClass}` }, []),
       ]),
       el("p", { class: "tileHint" }, ["Tap"]),
@@ -137,26 +129,29 @@ export function renderReflect() {
   function lastMoveCard() {
     const last = lastClarify();
     if (!last?.statement) return null;
-
     const moveTo = MOVES.find((m) => m.id === last.move)?.to || "#/home";
 
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Last locked move"),
-      el("p", { class: "p", style: "margin-top:8px" }, [last.statement]),
-      el("div", { class: "btnRow", style: "margin-top:10px" }, [
+      el("p", { class: "p" }, [last.statement]),
+      el("div", { class: "btnRow" }, [
         el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = moveTo) }, ["Do it now"]),
-        el("button", {
-          class: "btn",
-          type: "button",
-          onClick: () => {
-            state.step = 1;
-            state.loop = null;
-            state.control = null;
-            state.move = null;
-            state.statement = "";
-            rerender();
+        el(
+          "button",
+          {
+            class: "btn",
+            type: "button",
+            onClick: () => {
+              state.step = 1;
+              state.loop = null;
+              state.control = null;
+              state.move = null;
+              state.statement = "";
+              rerender();
+            },
           },
-        }, ["Run Clarify"]),
+          ["Run Clarify"]
+        ),
       ]),
     ]);
   }
@@ -169,9 +164,7 @@ export function renderReflect() {
         sectionLabel("Step 1 of 3"),
         el("h2", { class: "h2" }, ["What’s looping?"]),
         el("p", { class: "small" }, ["Pick what fits best."]),
-        el("div", { class: "flowShell", style: "margin-top:10px" }, STEP1.map((o) =>
-          tile(o, () => { state.loop = o.id; setStep(2); }, "dotGreen")
-        )),
+        el("div", { class: "flowShell", style: "margin-top:10px" }, STEP1.map((o) => tile(o, () => { state.loop = o.id; setStep(2); }, "dotGreen"))),
       ]),
     ].filter(Boolean));
   }
@@ -181,10 +174,12 @@ export function renderReflect() {
       sectionLabel("Step 2 of 3"),
       el("h2", { class: "h2" }, ["What’s in your control right now?"]),
       el("p", { class: "small" }, ["This reduces rumination fast."]),
-      el("div", { class: "flowShell", style: "margin-top:10px" }, CONTROL.map((o) =>
-        tile(o, () => { state.control = o.id; setStep(3); }, o.id === "nothing" ? "dotYellow" : "dotGreen")
-      )),
-      el("div", { class: "btnRow", style: "margin-top:10px" }, [
+      el(
+        "div",
+        { class: "flowShell", style: "margin-top:10px" },
+        CONTROL.map((o) => tile(o, () => { state.control = o.id; setStep(3); }, o.id === "nothing" ? "dotYellow" : "dotGreen"))
+      ),
+      el("div", { class: "btnRow" }, [
         el("button", { class: "btn", type: "button", onClick: () => setStep(1) }, ["Back"]),
       ]),
     ]);
@@ -195,19 +190,23 @@ export function renderReflect() {
       sectionLabel("Step 3 of 3"),
       el("h2", { class: "h2" }, ["Pick the smallest safe move"]),
       el("p", { class: "small" }, ["Tap one to lock it."]),
-      el("div", { class: "flowShell", style: "margin-top:10px" }, MOVES.map((m) =>
-        tile(
-          { label: m.label, hint: m.hint },
-          () => {
-            state.move = m.id;
-            buildStatement();
-            save();
-            setStep(4);
-          },
-          (m.id === "shield" || m.id === "calm") ? "dotYellow" : "dotGreen"
+      el(
+        "div",
+        { class: "flowShell", style: "margin-top:10px" },
+        MOVES.map((m) =>
+          tile(
+            { label: m.label, hint: m.hint },
+            () => {
+              state.move = m.id;
+              buildStatement();
+              save();
+              setStep(4);
+            },
+            (m.id === "shield" || m.id === "calm") ? "dotYellow" : "dotGreen"
+          )
         )
-      )),
-      el("div", { class: "btnRow", style: "margin-top:10px" }, [
+      ),
+      el("div", { class: "btnRow" }, [
         el("button", { class: "btn", type: "button", onClick: () => setStep(2) }, ["Back"]),
       ]),
     ]);
@@ -219,23 +218,27 @@ export function renderReflect() {
       sectionLabel("Locked"),
       el("h2", { class: "h2" }, ["Your next move"]),
       el("p", { class: "p" }, [state.statement]),
-      el("div", { class: "btnRow", style: "margin-top:10px" }, [
+      el("div", { class: "btnRow" }, [
         el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = move.to) }, ["Do it now"]),
-        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Home"]),
+        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Back to Home"]),
       ]),
-      el("div", { class: "btnRow", style: "margin-top:10px" }, [
-        el("button", {
-          class: "btn",
-          type: "button",
-          onClick: () => {
-            state.step = 1;
-            state.loop = null;
-            state.control = null;
-            state.move = null;
-            state.statement = "";
-            rerender();
+      el("div", { class: "btnRow" }, [
+        el(
+          "button",
+          {
+            class: "btn",
+            type: "button",
+            onClick: () => {
+              state.step = 1;
+              state.loop = null;
+              state.control = null;
+              state.move = null;
+              state.statement = "";
+              rerender();
+            },
           },
-        }, ["Run Clarify again"]),
+          ["Run Clarify again"]
+        ),
       ]),
       el("p", { class: "small", style: "margin-top:8px" }, ["Rule: once you lock a move, stop. Then do it."]),
     ]);
