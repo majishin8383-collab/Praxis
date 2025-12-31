@@ -4,10 +4,9 @@
  * Public demo does not grant a license to use, copy, modify, or distribute.
  */
 
-// js/ui.js (FULL REPLACEMENT)
 import { readLog } from "./storage.js";
 
-const BUILD_HOME = "UI-HOME-7";
+const BUILD_HOME = "UI-HOME-8";
 
 // Emergency session marker (set by emergency screen)
 const KEY_LAST_EMERGENCY = "praxis_last_emergency_ts";
@@ -72,15 +71,20 @@ function hasRecentEmergencyFromLog() {
   }
 }
 
+function sectionLabel(text) {
+  // Replaces "badge" usage to comply with GOVERNANCE.md UI rules.
+  return el("div", { class: "small", style: "opacity:.85;font-weight:700;letter-spacing:.02em;" }, [text]);
+}
+
 function safetyBanner() {
   // Keep this subtle: only appears if Emergency was opened recently.
   const show = hasRecentEmergencyFromSession() || hasRecentEmergencyFromLog();
   if (!show) return null;
 
   return el("div", { class: "card cardPad" }, [
-    el("div", { class: "badge" }, ["Safety check"]),
+    sectionLabel("Safety check"),
     el("p", { class: "p" }, [
-      "If safety is still at risk, use Emergency now. If you’re safe enough, start with Calm for 2 minutes.",
+      "If safety is still at risk, use Emergency now. If you’re safe enough, Calm is available for 2 minutes.",
     ]),
     el("div", { class: "btnRow" }, [
       el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/yellow/calm") }, [
@@ -95,53 +99,39 @@ function safetyBanner() {
 
 // ----- Home routing tiles -----
 function feelingTile({ label, hint, go, goDot }) {
-  return el(
-    "button",
-    { class: "actionTile", type: "button", onClick: () => (location.hash = go) },
-    [
-      el("div", { class: "tileTop" }, [
-        el("div", {}, [
-          el("div", { class: "tileTitle" }, [label]),
-          el("div", { class: "tileSub" }, [hint]),
-        ]),
-        el("div", { class: `zoneDot ${goDot}` }, []),
-      ]),
-      el("p", { class: "tileHint" }, ["Tap"]),
-    ]
-  );
+  return el("button", { class: "actionTile", type: "button", onClick: () => (location.hash = go) }, [
+    el("div", { class: "tileTop" }, [
+      el("div", {}, [el("div", { class: "tileTitle" }, [label]), el("div", { class: "tileSub" }, [hint])]),
+      el("div", { class: `zoneDot ${goDot}` }, []),
+    ]),
+    el("p", { class: "tileHint" }, ["Tap"]),
+  ]);
 }
 
 const FEELING_OPTIONS = [
   { label: "I’m not safe / risk is high", hint: "Immediate support.", go: "#/red/emergency", goDot: "dotRed" },
   { label: "Overwhelmed / anxious", hint: "Lower intensity first.", go: "#/yellow/calm", goDot: "dotYellow" },
   { label: "Urge to act / message / react", hint: "Pause before acting.", go: "#/yellow/stop", goDot: "dotYellow" },
-  { label: "Stuck / frozen / restless", hint: "Body first. Then progress.", go: "#/green/move", goDot: "dotGreen" },
+  { label: "Stuck / frozen / restless", hint: "Body first. Then momentum.", go: "#/green/move", goDot: "dotGreen" },
   { label: "I’m okay — I need a plan", hint: "Three steps only.", go: "#/green/today", goDot: "dotGreen" },
 ];
 
 // ----- Tools (minimal, no redundancy) -----
 function toolTile({ title, sub, hint, dot, to }) {
-  return el(
-    "button",
-    { class: "actionTile", type: "button", onClick: () => (location.hash = to) },
-    [
-      el("div", { class: "tileTop" }, [
-        el("div", {}, [
-          el("div", { class: "tileTitle" }, [title]),
-          el("div", { class: "tileSub" }, [sub]),
-        ]),
-        el("div", { class: `zoneDot ${dot}` }, []),
-      ]),
-      el("p", { class: "tileHint" }, [hint]),
-    ]
-  );
+  return el("button", { class: "actionTile", type: "button", onClick: () => (location.hash = to) }, [
+    el("div", { class: "tileTop" }, [
+      el("div", {}, [el("div", { class: "tileTitle" }, [title]), el("div", { class: "tileSub" }, [sub])]),
+      el("div", { class: `zoneDot ${dot}` }, []),
+    ]),
+    el("p", { class: "tileHint" }, [hint]),
+  ]);
 }
 
 function toolsSection() {
   const stabilizeTiles = [
     toolTile({
       title: "Calm Me Down",
-      sub: "Drop intensity fast",
+      sub: "Lower intensity fast",
       hint: "2 minutes. Guided.",
       dot: "dotYellow",
       to: "#/yellow/calm",
@@ -165,15 +155,15 @@ function toolsSection() {
   const actTiles = [
     toolTile({
       title: "Move Forward",
-      sub: "Body first. Then progress.",
-      hint: "Pick a ladder. Do it until the timer ends.",
+      sub: "Body first. Then momentum.",
+      hint: "Pick a ladder. Let the timer hold the step.",
       dot: "dotGreen",
       to: "#/green/move",
     }),
     toolTile({
       title: "Today’s Plan",
       sub: "Three steps only",
-      hint: "Pick a template, then do Step 1.",
+      hint: "Pick a template. Start with Step 1 when ready.",
       dot: "dotGreen",
       to: "#/green/today",
     }),
@@ -181,19 +171,19 @@ function toolsSection() {
 
   return el("div", {}, [
     el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["Tools"]),
+      sectionLabel("Tools"),
       el("p", { class: "small" }, ["Only what you need. No duplicates."]),
     ]),
 
     el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["Stabilize"]),
+      sectionLabel("Stabilize"),
       el("p", { class: "small" }, ["Lower intensity first."]),
       el("div", { class: "homeGrid" }, stabilizeTiles),
     ]),
 
     el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["Act"]),
-      el("p", { class: "small" }, ["Body first. Then progress."]),
+      sectionLabel("Act"),
+      el("p", { class: "small" }, ["Movement is optional."]),
       el("div", { class: "homeGrid" }, actTiles),
     ]),
   ]);
@@ -205,17 +195,19 @@ export function renderHome() {
   // session-only UI toggle
   let showTools = false;
 
+  const DEBUG = typeof location !== "undefined" && String(location.search || "").includes("debug=1");
+
   function header() {
     return el("div", { class: "homeHeader" }, [
       el("h1", { class: "h1" }, ["PRAXIS"]),
       el("p", { class: "p" }, ["Start with your state. One tap."]),
-      el("div", { class: "small" }, [`Home ${BUILD_HOME}`]),
-    ]);
+      DEBUG ? el("div", { class: "small" }, [`Home ${BUILD_HOME}`]) : null,
+    ].filter(Boolean));
   }
 
   function startCard() {
     return el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["Start here"]),
+      sectionLabel("Start here"),
       el("h2", { class: "h2" }, ["How are you feeling right now?"]),
       el("p", { class: "small" }, ["One tap. No thinking."]),
       el("div", { class: "flowShell", style: "margin-top:10px" }, FEELING_OPTIONS.map((o) => feelingTile(o))),
