@@ -84,9 +84,6 @@ export function renderCalm() {
         running = false;
         mode = "done";
         // record stabilize credit on completion of window
-        try {
-          grantStabilizeCreditToday();
-        } catch {}
         safeAppendLog({
           kind: "calm_end",
           when: nowISO(),
