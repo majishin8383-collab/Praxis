@@ -28,6 +28,7 @@ function localDayStamp() {
 
 function normalizeKind(kind) {
   const k = String(kind || "").trim();
+
   // Broad aliasing for older builds / experiments.
   const map = {
     // Stop Urge
@@ -48,21 +49,41 @@ function normalizeKind(kind) {
     emergency: "emergency_open",
     emergency_open: "emergency_open",
 
-    // ✅ A3 back-compat aliases (older “end” kinds should behave like the canonical kinds)
+    // A3 back-compat aliases (older “end” kinds behave like the canonical kinds)
     calm_end: "calm",
     stop_urge_end: "stop_urge",
     move_forward_end: "move_forward",
   };
+
   return map[k] || k;
 }
 
+/**
+ * Stabilize credit is a day-stamp used as a soft permission (e.g. Today Plan Step 2 availability).
+ * Timer parity rule: any meaningful stabilize/act timer interaction should grant credit.
+ * Keep this inclusive (but only for relevant tools), and never throw.
+ */
 function shouldGrantStabilizeCredit(entry) {
   const kind = normalizeKind(entry?.kind);
-  // This credit is used as a soft permission (e.g., Today Plan Step 2 availability).
-  // Keep conservative but inclusive across starting points.
+  if (!kind) return false;
+
+  // Canonical completions (existing behavior)
   if (kind === "calm") return true;
   if (kind === "stop_urge") return true;
   if (kind === "move_forward") return true;
+
+  // Stabilize / Act timers (start/stop/extend/end) should also count.
+  if (kind.startsWith("stop_urge_")) return true; // open/start/stop/extend/etc
+  if (kind.startsWith("move_forward_")) return true; // open/start/stop/extend/end/etc
+
+  // Calm tool may log calm_start/calm_stop in some builds
+  if (kind === "calm_start" || kind === "calm_stop") return true;
+
+  // Today’s Plan parity: any step timer interaction counts
+  if (kind.startsWith("today_plan_step_")) return true; // step_start/step_stop/step_end/etc
+  if (kind === "today_plan_continue_start") return true;
+  if (kind === "today_plan_step") return true;
+
   return false;
 }
 
@@ -80,16 +101,19 @@ export function readLog() {
 
 export function appendLog(entry) {
   const e = entry && typeof entry === "object" ? { ...entry } : { kind: "unknown" };
+
+  // Normalize / guard
   e.kind = normalizeKind(e.kind);
   if (!e.when) e.when = nowISO();
 
+  // Persist log (cap)
   const log = readLog();
   log.unshift(e);
-
   try {
     localStorage.setItem(KEY_LOG, JSON.stringify(log.slice(0, 300)));
   } catch {}
 
+  // Grant stabilize credit (best-effort)
   if (shouldGrantStabilizeCredit(e)) {
     try {
       localStorage.setItem(KEY_STABILIZE_DAY, localDayStamp());
@@ -121,7 +145,10 @@ export function clearStabilizeCredit() {
 // ---------- intent handoff ----------
 export function setNextIntent(intent) {
   try {
-    localStorage.setItem(KEY_NEXT_INTENT, JSON.stringify({ intent: String(intent || ""), ts: Date.now() }));
+    localStorage.setItem(
+      KEY_NEXT_INTENT,
+      JSON.stringify({ intent: String(intent || ""), ts: Date.now() })
+    );
   } catch {}
 }
 
@@ -130,6 +157,7 @@ export function consumeNextIntent(maxAgeMinutes = 30) {
     const raw = localStorage.getItem(KEY_NEXT_INTENT);
     if (!raw) return null;
 
+    // one-time read+clear
     localStorage.removeItem(KEY_NEXT_INTENT);
 
     const parsed = JSON.parse(raw);
@@ -144,6 +172,7 @@ export function consumeNextIntent(maxAgeMinutes = 30) {
 
     return intent;
   } catch {
+    // If parse fails, clear it so it doesn’t keep breaking.
     try {
       localStorage.removeItem(KEY_NEXT_INTENT);
     } catch {}
