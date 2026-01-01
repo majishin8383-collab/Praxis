@@ -2,10 +2,28 @@
 import { appendLog, setNextIntent } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "MF-12";
+const BUILD = "MF-13";
 
 // light persistence so "Quick start" feels smart without being complex
 const KEY_LAST = "praxis_move_forward_last_v1";
+
+// Step 3 unlock credit (day stamp)
+const KEY_TP3_CREDIT_DAY = "praxis_today_plan_step3_credit_day_v1";
+
+// Uses device-local day stamp.
+function localDayStamp() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function grantStep3CreditToday() {
+  try {
+    localStorage.setItem(KEY_TP3_CREDIT_DAY, localDayStamp());
+  } catch {}
+}
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -13,7 +31,8 @@ function el(tag, attrs = {}, children = []) {
     if (v === null || v === undefined || v === false) continue;
     if (k === "class") node.className = v;
     else if (k === "html") node.innerHTML = v;
-    else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (k.startsWith("on") && typeof v === "function")
+      node.addEventListener(k.slice(2).toLowerCase(), v);
     else if (v === true) node.setAttribute(k, "");
     else node.setAttribute(k, v);
   }
@@ -25,17 +44,29 @@ function el(tag, attrs = {}, children = []) {
 }
 
 const nowISO = () => new Date().toISOString();
-function safeAppendLog(entry) { try { appendLog(entry); } catch {} }
+
+function safeAppendLog(entry) {
+  try {
+    appendLog(entry);
+  } catch {}
+}
 
 function sectionLabel(text) {
   return el("div", { class: "small", style: "opacity:.85;font-weight:800;letter-spacing:.02em;" }, [text]);
 }
 
 function getLastLadder() {
-  try { return localStorage.getItem(KEY_LAST) || ""; } catch { return ""; }
+  try {
+    return localStorage.getItem(KEY_LAST) || "";
+  } catch {
+    return "";
+  }
 }
+
 function setLastLadder(id) {
-  try { localStorage.setItem(KEY_LAST, String(id || "")); } catch {}
+  try {
+    localStorage.setItem(KEY_LAST, String(id || ""));
+  } catch {}
 }
 
 const LADDERS = [
@@ -76,8 +107,15 @@ export function renderMoveForward() {
 
   safeAppendLog({ kind: "move_forward_open", when: nowISO(), build: BUILD });
 
-  function stopTick() { if (tick) clearInterval(tick); tick = null; }
-  function remainingMs() { return clamp(endAt - Date.now(), 0, durationMin * 60 * 1000); }
+  function stopTick() {
+    if (tick) clearInterval(tick);
+    tick = null;
+  }
+
+  function remainingMs() {
+    return clamp(endAt - Date.now(), 0, durationMin * 60 * 1000);
+  }
+
   function updateTimerUI() {
     const readout = wrap.querySelector("[data-timer-readout]");
     if (readout) readout.textContent = formatMMSS(remainingMs());
@@ -85,14 +123,17 @@ export function renderMoveForward() {
 
   function goTodayWithPrefill(ladder) {
     const txt = `${ladder.title} (${ladder.minutes} min)`;
+
+    // ✅ Option B: fill Step 2 and focus Step 2
     try {
       setNextIntent("today_plan_prefill", {
         from: "move_forward",
         targetStep: 2,
         text: txt,
-        defaultToStep: 2, // Option B: don’t jump to Step 3
+        focusStep: 2,
       });
     } catch {}
+
     location.hash = "#/green/today";
   }
 
@@ -107,10 +148,12 @@ export function renderMoveForward() {
   function startSelected() {
     const ladder = findLadder(selectedLadderId);
 
+    // ✅ Starting a ladder unlocks Today Plan Step 3 (internal, no visible marker)
+    grantStep3CreditToday();
+
     running = true;
     stoppedEarly = false;
     elapsedSec = 0;
-
     durationMin = ladder.minutes;
     startAt = Date.now();
     endAt = Date.now() + durationMin * 60 * 1000;
@@ -127,9 +170,13 @@ export function renderMoveForward() {
     stopTick();
     tick = setInterval(() => {
       if (!running) return;
+
       if (endAt - Date.now() <= 0) {
         stopTick();
         running = false;
+
+        // reinforce credit
+        grantStep3CreditToday();
 
         safeAppendLog({
           kind: "move_forward_end",
@@ -161,6 +208,9 @@ export function renderMoveForward() {
 
     stoppedEarly = true;
     elapsedSec = Math.max(0, Math.round(elapsedMs / 1000));
+
+    // reinforce credit
+    grantStep3CreditToday();
 
     safeAppendLog({
       kind: "move_forward_stop",
@@ -273,17 +323,14 @@ export function renderMoveForward() {
     if (mode !== "closed") return null;
 
     const ladder = findLadder(selectedLadderId);
-    const line = stoppedEarly ? `Some motion happened (${elapsedSec}s).` : "The window ended.";
+    const line = stoppedEarly ? `Window closed (${elapsedSec}s).` : "Window closed.";
 
     return el("div", { class: "card cardPad" }, [
-      sectionLabel("Readiness"),
+      sectionLabel("Next step"),
       el("p", { class: "p" }, [line]),
       el("div", { class: "btnRow" }, [
-        el("button", { class: "btn btnPrimary", type: "button", onClick: () => { mode = "pick"; rerender(); } }, ["Choose another ladder"]),
-        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
-      ]),
-      el("div", { class: "btnRow", style: "margin-top:10px" }, [
-        el("button", { class: "btn", type: "button", onClick: () => goTodayWithPrefill(ladder) }, ["Today’s Plan"]),
+        el("button", { class: "btn btnPrimary", type: "button", onClick: () => goTodayWithPrefill(ladder) }, ["Today’s Plan"]),
+        el("button", { class: "btn", type: "button", onClick: () => { mode = "pick"; rerender(); } }, ["Run again"]),
       ]),
     ]);
   }
@@ -296,6 +343,7 @@ export function renderMoveForward() {
       wrap.appendChild(showAllLadders ? allLaddersCard() : quickStartCard());
       return;
     }
+
     if (mode === "selected") wrap.appendChild(selectedCard());
     if (mode === "running") wrap.appendChild(runningCard());
 
