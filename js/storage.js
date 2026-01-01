@@ -7,8 +7,10 @@
  */
 
 const KEY_LOG = "praxis_log_v1";
+
 // Stabilize credit (day stamp)
 const KEY_STABILIZE_DAY = "praxis_stabilize_credit_day_v1";
+
 // One-time routing hint between tools (intent handoff)
 const KEY_NEXT_INTENT = "praxis_next_intent_v1";
 
@@ -78,7 +80,7 @@ function shouldGrantStabilizeCredit(entry) {
   if (kind === "calm_start" || kind === "calm_stop") return true;
 
   // Today’s Plan parity: any step timer interaction counts
-  if (kind.startsWith("today_plan_step_")) return true; // step_start/step_stop/step_window_end/etc
+  if (kind.startsWith("today_plan_step_")) return true;
   if (kind === "today_plan_continue_start") return true;
   if (kind === "today_plan_step") return true;
 
@@ -107,7 +109,6 @@ export function appendLog(entry) {
   // Persist log (cap)
   const log = readLog();
   log.unshift(e);
-
   try {
     localStorage.setItem(KEY_LOG, JSON.stringify(log.slice(0, 300)));
   } catch {}
@@ -142,28 +143,17 @@ export function clearStabilizeCredit() {
 }
 
 // ---------- intent handoff ----------
-// Back-compat: keep storing {intent, ts} for string intents.
-export function setNextIntent(intent) {
-  try {
-    localStorage.setItem(
-      KEY_NEXT_INTENT,
-      JSON.stringify({ intent: String(intent || ""), ts: Date.now() })
-    );
-  } catch {}
-}
-
 /**
- * New: set an intent with a payload.
- * - Does NOT break older consumers (they can continue calling consumeNextIntent()).
- * - Payload must be JSON-serializable.
+ * Back-compat: setNextIntent("some_intent") still works.
+ * New: setNextIntent("some_intent", { ...payload })
  */
-export function setNextIntentData(intent, payload = null) {
+export function setNextIntent(intent, payload = null) {
   try {
     localStorage.setItem(
       KEY_NEXT_INTENT,
       JSON.stringify({
         intent: String(intent || ""),
-        payload: payload === undefined ? null : payload,
+        payload: payload && typeof payload === "object" ? payload : null,
         ts: Date.now(),
       })
     );
@@ -171,8 +161,10 @@ export function setNextIntentData(intent, payload = null) {
 }
 
 /**
- * Back-compat: returns ONLY the intent string (or null).
- * If an entry includes a payload, it is ignored here.
+ * Returns:
+ * - null
+ * - "intent_string"  (older callers)
+ * - { intent: "x", payload: {...} }  (new callers)
  */
 export function consumeNextIntent(maxAgeMinutes = 30) {
   try {
@@ -185,57 +177,22 @@ export function consumeNextIntent(maxAgeMinutes = 30) {
     const parsed = JSON.parse(raw);
     const intent = parsed?.intent ? String(parsed.intent) : "";
     const ts = Number(parsed?.ts || 0);
+    const payload = parsed?.payload && typeof parsed.payload === "object" ? parsed.payload : null;
 
     if (!intent) return null;
-    if (!Number.isFinite(ts) || ts <= 0) return intent;
 
-    const ageMs = Date.now() - ts;
-    if (ageMs > maxAgeMinutes * 60 * 1000) return null;
+    if (Number.isFinite(ts) && ts > 0) {
+      const ageMs = Date.now() - ts;
+      if (ageMs > maxAgeMinutes * 60 * 1000) return null;
+    }
 
+    // Only return object if we actually have payload
+    if (payload) return { intent, payload };
     return intent;
   } catch {
-    // If parse fails, clear it so it doesn’t keep breaking.
     try {
       localStorage.removeItem(KEY_NEXT_INTENT);
     } catch {}
     return null;
   }
-}
-
-/**
- * New: consumes intent + payload.
- * Returns: { intent: string, payload: any|null } or null.
- */
-export function consumeNextIntentData(maxAgeMinutes = 30) {
-  try {
-    const raw = localStorage.getItem(KEY_NEXT_INTENT);
-    if (!raw) return null;
-
-    // one-time read+clear
-    localStorage.removeItem(KEY_NEXT_INTENT);
-
-    const parsed = JSON.parse(raw);
-    const intent = parsed?.intent ? String(parsed.intent) : "";
-    const payload = parsed?.payload ?? null;
-    const ts = Number(parsed?.ts || 0);
-
-    if (!intent) return null;
-    if (!Number.isFinite(ts) || ts <= 0) return { intent, payload };
-
-    const ageMs = Date.now() - ts;
-    if (ageMs > maxAgeMinutes * 60 * 1000) return null;
-
-    return { intent, payload };
-  } catch {
-    try {
-      localStorage.removeItem(KEY_NEXT_INTENT);
-    } catch {}
-    return null;
-  }
-}
-
-export function clearNextIntent() {
-  try {
-    localStorage.removeItem(KEY_NEXT_INTENT);
-  } catch {}
 }
