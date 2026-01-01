@@ -2,7 +2,7 @@
 import { appendLog, setNextIntent } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "MF-13";
+const BUILD = "MF-14";
 
 // light persistence so "Quick start" feels smart without being complex
 const KEY_LAST = "praxis_move_forward_last_v1";
@@ -52,7 +52,11 @@ function safeAppendLog(entry) {
 }
 
 function sectionLabel(text) {
-  return el("div", { class: "small", style: "opacity:.85;font-weight:800;letter-spacing:.02em;" }, [text]);
+  return el(
+    "div",
+    { class: "small", style: "opacity:.85;font-weight:800;letter-spacing:.02em;" },
+    [text]
+  );
 }
 
 function getLastLadder() {
@@ -124,13 +128,13 @@ export function renderMoveForward() {
   function goTodayWithPrefill(ladder) {
     const txt = `${ladder.title} (${ladder.minutes} min)`;
 
-    // ✅ Option B: fill Step 2 and focus Step 2
+    // ✅ Correct mapping: Move Forward → Today Plan Step 3
     try {
       setNextIntent("today_plan_prefill", {
         from: "move_forward",
-        targetStep: 2,
+        targetStep: 3,
         text: txt,
-        focusStep: 2,
+        focusStep: 3,
       });
     } catch {}
 
@@ -170,7 +174,6 @@ export function renderMoveForward() {
     stopTick();
     tick = setInterval(() => {
       if (!running) return;
-
       if (endAt - Date.now() <= 0) {
         stopTick();
         running = false;
@@ -270,6 +273,7 @@ export function renderMoveForward() {
       ].filter(Boolean)),
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
         el("button", { class: "btn", type: "button", onClick: () => { showAllLadders = true; rerender(); } }, ["More ladders"]),
+        // Prefill Step 3 using current selection (last/remembered)
         el("button", { class: "btn", type: "button", onClick: () => goTodayWithPrefill(findLadder(selectedLadderId)) }, ["Today’s Plan"]),
       ]),
     ]);
@@ -289,7 +293,6 @@ export function renderMoveForward() {
 
   function selectedCard() {
     const ladder = findLadder(selectedLadderId);
-
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Selected"),
       el("h2", { class: "h2" }, [ladder.title]),
@@ -329,6 +332,7 @@ export function renderMoveForward() {
       sectionLabel("Next step"),
       el("p", { class: "p" }, [line]),
       el("div", { class: "btnRow" }, [
+        // Prefill Step 3 with the ladder that actually ran
         el("button", { class: "btn btnPrimary", type: "button", onClick: () => goTodayWithPrefill(ladder) }, ["Today’s Plan"]),
         el("button", { class: "btn", type: "button", onClick: () => { mode = "pick"; rerender(); } }, ["Run again"]),
       ]),
