@@ -2,9 +2,9 @@
 import { appendLog, consumeNextIntent, hasStabilizeCreditToday } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "TP-16";
+const BUILD = "TP-17";
 
-// ✅ Must match Next Step + Move Forward + Router
+// ✅ Primary storage key
 const KEY_PRIMARY = "praxis_today_plan_v5";
 // Back-compat in case older saves exist
 const KEY_FALLBACK = "praxis_today_plan_v6";
@@ -246,7 +246,7 @@ export function renderTodayPlan() {
     rerender();
   }
 
-  function continueAfterStuck(extraMin) {
+  function continueAfterNotDone(extraMin) {
     liveDurationMin = Math.max(1, extraMin);
     running = true;
     startAt = Date.now();
@@ -311,7 +311,7 @@ export function renderTodayPlan() {
       step: activeStep,
       stepText: stepText(activeStep),
       minutes: liveDurationMin,
-      result,
+      result, // keep "stuck" internal for back-compat
       build: BUILD,
     });
   }
@@ -509,22 +509,23 @@ export function renderTodayPlan() {
             class: "btn",
             type: "button",
             onClick: () => {
+              // Keep internal result value "stuck" for compatibility
               logStep("stuck");
               statusMode = "offer_continue";
               rerender();
             },
-          }, ["Still stuck"]),
+          }, ["Not done yet"]),
         ]),
       ]);
     }
 
     if (statusMode === "offer_continue") {
       return el("div", { class: "card cardPad" }, [
-        el("div", { class: "badge" }, ["Still stuck"]),
+        el("div", { class: "badge" }, ["Not done yet"]),
         el("p", { class: "p" }, ["Pick one: continue briefly, or change state."]),
         el("div", { class: "btnRow" }, [
-          el("button", { class: "btn btnPrimary", type: "button", onClick: () => continueAfterStuck(5) }, ["Continue 5 min"]),
-          el("button", { class: "btn", type: "button", onClick: () => continueAfterStuck(10) }, ["Continue 10 min"]),
+          el("button", { class: "btn btnPrimary", type: "button", onClick: () => continueAfterNotDone(5) }, ["Continue 5 min"]),
+          el("button", { class: "btn", type: "button", onClick: () => continueAfterNotDone(10) }, ["Continue 10 min"]),
         ]),
         el("div", { class: "btnRow" }, [
           el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/yellow/calm") }, ["Calm Me Down"]),
