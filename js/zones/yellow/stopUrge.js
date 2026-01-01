@@ -1,9 +1,3 @@
-/*!
- * Praxis
- * © 2025 Joseph Satmary. All rights reserved.
- * Public demo does not grant a license to use, copy, modify, or distribute.
- */
-
 // js/zones/yellow/stopUrge.js (FULL REPLACEMENT)
 import { appendLog, setNextIntent } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
@@ -28,15 +22,11 @@ function el(tag, attrs = {}, children = []) {
 }
 
 const nowISO = () => new Date().toISOString();
-
 function safeAppendLog(entry) {
-  try {
-    appendLog(entry);
-  } catch {}
+  try { appendLog(entry); } catch {}
 }
 
 function sectionLabel(text) {
-  // Avoid "badge" UI to comply with GOVERNANCE.md
   return el("div", { class: "small", style: "opacity:.85;font-weight:800;letter-spacing:.02em;" }, [text]);
 }
 
@@ -115,15 +105,8 @@ export function renderStopUrge() {
 
   safeAppendLog({ kind: "stop_urge_open", when: nowISO(), build: BUILD });
 
-  function stopTick() {
-    if (tick) clearInterval(tick);
-    tick = null;
-  }
-
-  function remainingMs() {
-    return clamp(endAt - Date.now(), 0, durationMin * 60 * 1000);
-  }
-
+  function stopTick() { if (tick) clearInterval(tick); tick = null; }
+  function remainingMs() { return clamp(endAt - Date.now(), 0, durationMin * 60 * 1000); }
   function updateTimerUI() {
     const readout = wrap.querySelector("[data-timer-readout]");
     if (readout) readout.textContent = formatMMSS(remainingMs());
@@ -188,7 +171,6 @@ export function renderStopUrge() {
       build: BUILD,
     });
 
-    // Early stop is valid use: go to check-in without interrogation
     mode = "checkin";
     rerender();
   }
@@ -197,7 +179,6 @@ export function renderStopUrge() {
     lastOutcome = outcome;
     const s = selectedScriptText();
 
-    // Canonical event: storage.js decides stabilize credit.
     safeAppendLog({
       kind: "stop_urge",
       when: nowISO(),
@@ -212,10 +193,16 @@ export function renderStopUrge() {
       build: BUILD,
     });
 
-    // Non-pushy handoff: if the urge passed, make Today Plan open to Step 2 when they choose it.
     if (outcome === "passed") {
+      // Option B: after Stabilize/Act tool, Today’s Plan focuses Step 2
       try {
-        setNextIntent("today_plan_step2");
+        setNextIntent("today_plan_prefill", {
+          from: "stop_urge",
+          targetStep: 1,
+          text: `${durationMin}-min Stop the Urge`,
+          templateId: "stability",
+          defaultToStep: 2,
+        });
       } catch {}
     }
   }
@@ -228,19 +215,7 @@ export function renderStopUrge() {
         String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
       ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
-        el(
-          "button",
-          {
-            class: "linkBtn",
-            type: "button",
-            onClick: () => {
-              running = false;
-              stopTick();
-              location.hash = "#/home";
-            },
-          },
-          ["Reset"]
-        ),
+        el("button", { class: "linkBtn", type: "button", onClick: () => { running = false; stopTick(); location.hash = "#/home"; } }, ["Reset"]),
       ]),
     ]);
   }
@@ -262,7 +237,6 @@ export function renderStopUrge() {
       sectionLabel(`Active • ${durationMin} min`),
       el("div", { class: "timerBox" }, [
         el("div", { class: "timerReadout", "data-timer-readout": "1" }, [formatMMSS(remainingMs())]),
-        // NOTE: progress bars intentionally removed per GOVERNANCE.md
         el("div", { class: "btnRow" }, [
           el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"]),
         ]),
@@ -302,9 +276,7 @@ export function renderStopUrge() {
         el("div", { class: "btnRow" }, [
           el("button", { class: "btn btnPrimary", type: "button", onClick: () => copyToClipboard(s.text) }, ["Copy"]),
         ]),
-        el("p", { class: "small", style: "margin-top:8px" }, [
-          "If copy is blocked on mobile, it will pop up so you can copy manually.",
-        ]),
+        el("p", { class: "small", style: "margin-top:8px" }, ["If copy is blocked on mobile, it will pop up so you can copy manually."]),
       ]
     );
 
@@ -341,32 +313,16 @@ export function renderStopUrge() {
       sectionLabel("Check-in"),
       el("p", { class: "p" }, ["What’s true right now?"]),
       el("div", { class: "btnRow" }, [
-        el(
-          "button",
-          {
-            class: "btn btnPrimary",
-            type: "button",
-            onClick: () => {
-              logOutcome("passed", "Urge passed.");
-              mode = "closed";
-              rerender();
-            },
-          },
-          ["Urge passed"]
-        ),
-        el(
-          "button",
-          {
-            class: "btn",
-            type: "button",
-            onClick: () => {
-              logOutcome("still_present", "Urge still present.");
-              mode = "closed";
-              rerender();
-            },
-          },
-          ["Still present"]
-        ),
+        el("button", {
+          class: "btn btnPrimary",
+          type: "button",
+          onClick: () => { logOutcome("passed", "Urge passed."); mode = "closed"; rerender(); },
+        }, ["Urge passed"]),
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => { logOutcome("still_present", "Urge still present."); mode = "closed"; rerender(); },
+        }, ["Still present"]),
       ]),
     ]);
   }
@@ -375,44 +331,24 @@ export function renderStopUrge() {
     if (mode !== "closed") return null;
 
     const line =
-      lastOutcome === "passed" ? "Some space opened up." : lastOutcome === "still_present" ? "The pattern slowed." : "A pause happened.";
+      lastOutcome === "passed" ? "Some space opened up."
+      : lastOutcome === "still_present" ? "The pattern slowed."
+      : "A pause happened.";
 
     const nextStepBtn =
       lastOutcome === "passed"
-        ? el(
-            "button",
-            {
-              class: "btn",
-              type: "button",
-              onClick: () => {
-                // intent already set inside logOutcome when passed, but keep resilient
-                try {
-                  setNextIntent("today_plan_step2");
-                } catch {}
-                location.hash = "#/green/today";
-              },
-            },
-            ["Next step"]
-          )
+        ? el("button", {
+            class: "btn",
+            type: "button",
+            onClick: () => (location.hash = "#/green/today"),
+          }, ["Next step"])
         : null;
 
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Relief"),
       el("p", { class: "p" }, [line]),
       el("div", { class: "btnRow" }, [
-        el(
-          "button",
-          {
-            class: "btn btnPrimary",
-            type: "button",
-            onClick: () => {
-              mode = "idle";
-              lastOutcome = null;
-              rerender();
-            },
-          },
-          ["Run again"]
-        ),
+        el("button", { class: "btn btnPrimary", type: "button", onClick: () => { mode = "idle"; lastOutcome = null; rerender(); } }, ["Run again"]),
         nextStepBtn,
         el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
       ].filter(Boolean)),
@@ -423,16 +359,11 @@ export function renderStopUrge() {
     wrap.innerHTML = "";
     wrap.appendChild(header());
     wrap.appendChild(timerPanel());
-
     const chk = checkinCard();
     if (chk) wrap.appendChild(chk);
-
     const cl = closureCard();
     if (cl) wrap.appendChild(cl);
-
-    // scripts are optional support; keep visible but not pushy
     wrap.appendChild(el("div", { class: "card cardPad" }, [scriptsPanel()]));
-
     if (running) updateTimerUI();
   }
 
