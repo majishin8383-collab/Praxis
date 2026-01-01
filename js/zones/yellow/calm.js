@@ -1,5 +1,5 @@
 // js/zones/yellow/calm.js (FULL REPLACEMENT)
-import { appendLog, grantStabilizeCreditToday } from "../../storage.js";
+import { appendLog, setNextIntent } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
 const BUILD = "CALM-8";
@@ -25,13 +25,6 @@ const nowISO = () => new Date().toISOString();
 function safeAppendLog(entry) {
   try {
     appendLog(entry);
-  } catch {}
-}
-
-// Token grant should be idempotent (day-stamp). Best-effort only.
-function grantToken() {
-  try {
-    grantStabilizeCreditToday();
   } catch {}
 }
 
@@ -81,9 +74,6 @@ export function renderCalm() {
     startAt = Date.now();
     endAt = Date.now() + min * 60 * 1000;
 
-    // Starting a timer counts as stabilize for the day (parity).
-    grantToken();
-
     safeAppendLog({ kind: "calm_start", when: nowISO(), minutes: min, build: BUILD });
 
     stopTick();
@@ -93,10 +83,6 @@ export function renderCalm() {
         stopTick();
         running = false;
         mode = "done";
-
-        // Completion counts as stabilize for the day (parity).
-        grantToken();
-
         safeAppendLog({
           kind: "calm_end",
           when: nowISO(),
@@ -105,7 +91,6 @@ export function renderCalm() {
           elapsedSec: durationMin * 60,
           build: BUILD,
         });
-
         rerender();
       } else {
         updateTimerUI();
@@ -125,9 +110,6 @@ export function renderCalm() {
 
     stoppedEarly = true;
     elapsedSec = Math.max(0, Math.round(elapsedMs / 1000));
-
-    // Early stop still counts as stabilize for the day (parity).
-    grantToken();
 
     safeAppendLog({
       kind: "calm_stop",
@@ -150,19 +132,7 @@ export function renderCalm() {
         String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
       ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
-        el(
-          "button",
-          {
-            class: "linkBtn",
-            type: "button",
-            onClick: () => {
-              running = false;
-              stopTick();
-              location.hash = "#/home";
-            },
-          },
-          ["Reset"]
-        ),
+        el("button", { class: "linkBtn", type: "button", onClick: () => { running = false; stopTick(); location.hash = "#/home"; } }, ["Reset"]),
       ]),
     ]);
   }
@@ -184,8 +154,9 @@ export function renderCalm() {
       sectionLabel(`Active • ${durationMin} min`),
       el("div", { class: "timerBox" }, [
         el("div", { class: "timerReadout", "data-timer-readout": "1" }, [formatMMSS(remainingMs())]),
-        // NOTE: progress bars are intentionally removed per GOVERNANCE.md
-        el("div", { class: "btnRow" }, [el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"])]),
+        el("div", { class: "btnRow" }, [
+          el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"]),
+        ]),
       ]),
     ]);
   }
@@ -213,18 +184,34 @@ export function renderCalm() {
   function closureCard() {
     if (mode !== "stopped" && mode !== "done") return null;
 
-    // Closure sweep rule:
-    // Only actions: Next step (primary) + Reset (secondary).
     const stateLine = stoppedEarly ? "Stopping here is allowed." : "Nothing else is required of you right now.";
+
+    function goTodayPlan() {
+      // Option B: after Stabilize, open Today’s Plan focused on Step 2 (Act),
+      // and prefill Step 1 only if it’s empty.
+      const label = `${durationMin}-min Calm`;
+      try {
+        setNextIntent("today_plan_prefill", {
+          from: "calm",
+          targetStep: 1,
+          text: label,
+          templateId: "stability",
+          defaultToStep: 2,
+        });
+      } catch {}
+      location.hash = "#/green/today";
+    }
 
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Rest"),
       el("p", { class: "p" }, [stateLine]),
       el("div", { class: "btnRow" }, [
-        el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/green/today") }, [
-          "Next step",
-        ]),
+        el("button", { class: "btn btnPrimary", type: "button", onClick: () => { mode = "idle"; rerender(); } }, ["Run Calm again"]),
         el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
+      ]),
+      el("div", { class: "btnRow", style: "margin-top:10px" }, [
+        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/move") }, ["Move Forward"]),
+        el("button", { class: "btn", type: "button", onClick: goTodayPlan }, ["Today’s Plan"]),
       ]),
     ]);
   }
