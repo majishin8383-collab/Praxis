@@ -1,5 +1,5 @@
 /*! 
- * Praxis
+ * Praxis 
  * © 2025 Joseph Satmary. All rights reserved.
  * Public demo does not grant a license to use, copy, modify, or distribute.
  */
@@ -13,12 +13,31 @@ import {
 } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "TP-19";
+const BUILD = "TP-20";
 
 // ✅ Must match Router
 const KEY_PRIMARY = "praxis_today_plan_v5";
-// Back-compat in case older saves exist
 const KEY_FALLBACK = "praxis_today_plan_v6";
+
+// Move Forward → Step 3 unlock (day stamp)
+const KEY_TP3_CREDIT_DAY = "praxis_today_plan_step3_credit_day_v1";
+
+// Uses device-local day stamp.
+function localDayStamp() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function hasStep3CreditToday() {
+  try {
+    return localStorage.getItem(KEY_TP3_CREDIT_DAY) === localDayStamp();
+  } catch {
+    return false;
+  }
+}
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -38,6 +57,7 @@ function el(tag, attrs = {}, children = []) {
 }
 
 const nowISO = () => new Date().toISOString();
+
 function safeAppendLog(entry) {
   try {
     appendLog(entry);
@@ -135,7 +155,6 @@ function detectMinutes(text) {
 }
 
 function sectionLabel(text) {
-  // Avoid "badge" UI to comply with GOVERNANCE.md
   return el("div", { class: "small", style: "opacity:.85;font-weight:800;letter-spacing:.02em;" }, [text]);
 }
 
@@ -143,53 +162,30 @@ function sectionLabel(text) {
  * Auto-fill rule:
  * - Never overwrite a non-empty user step.
  * - If source provides a target step, fill that step if empty.
- * - If target step is not available (locked), we still fill text, but the lock rules remain.
- * - Option B routing: prefer opening Step 2 (Act) after Stabilize sources and Move Forward sources.
+ * - Option B routing: prefer focus Step 2 (Act) after Stabilize + Move Forward.
  */
 function prefillFromIntent(state, stabilizedToday, intentObj) {
   const payload = intentObj?.payload && typeof intentObj.payload === "object" ? intentObj.payload : null;
   if (!payload) return { state, focusStep: null };
 
-  const focusStep = payload.focusStep === 1 || payload.focusStep === 2 || payload.focusStep === 3 ? payload.focusStep : null;
-
   const text = typeof payload.text === "string" ? payload.text.trim() : "";
   const target = payload.targetStep === 1 || payload.targetStep === 2 || payload.targetStep === 3 ? payload.targetStep : null;
-
-  // Optional: if plan is blank and a template is suggested
-  const suggestedTemplateId = typeof payload.templateId === "string" ? payload.templateId : "";
-  if (isBlankPlan(state) && suggestedTemplateId) {
-    const t = getTemplateById(suggestedTemplateId);
-    if (t) {
-      state = { ...state, template: t.id, a: t.a, b: t.b, c: t.c, doneStep: 0 };
-    }
-  }
+  const focusStep = payload.focusStep === 1 || payload.focusStep === 2 || payload.focusStep === 3 ? payload.focusStep : null;
 
   if (text && target) {
     const key = target === 1 ? "a" : target === 2 ? "b" : "c";
     const current = String(state[key] || "").trim();
     if (!current) {
-      state = { ...state, [key]: text, template: state.template && state.template !== "custom" ? "custom" : state.template || "custom" };
+      state = {
+        ...state,
+        [key]: text,
+        template: state.template && state.template !== "custom" ? "custom" : state.template || "custom",
+      };
     }
   }
 
-  // Optional invisible advance marker (only upward)
-  const advanceTo = Number(payload.advanceToStep || 0);
-  if (Number.isFinite(advanceTo) && advanceTo > 0) {
-    state = { ...state, doneStep: Math.max(state.doneStep || 0, Math.min(3, advanceTo)) };
-  }
-
-  // Choose focus
   if (focusStep) return { state, focusStep };
-
-  // Default focus logic (Option B)
-  // If coming from stabilize/move sources, prefer Step 2 if available.
-  if (payload.defaultToStep === 1 || payload.defaultToStep === 2 || payload.defaultToStep === 3) {
-    return { state, focusStep: payload.defaultToStep };
-  }
-
-  // If stabilized today, Step 2 is often the right “Act” door
   if (stabilizedToday) return { state, focusStep: 2 };
-
   return { state, focusStep: null };
 }
 
@@ -223,6 +219,8 @@ export function renderTodayPlan() {
     }
   })();
 
+  const step3CreditToday = hasStep3CreditToday();
+
   // Always template-based by default unless user already has content
   if (isBlankPlan(state)) {
     const defaultId = pickDefaultTemplateId(stabilizedToday);
@@ -241,6 +239,7 @@ export function renderTodayPlan() {
   // --- intent parsing (string or object) ---
   let intentName = null;
   let intentPayload = null;
+
   if (rawIntent && typeof rawIntent === "object" && rawIntent.intent) {
     intentName = String(rawIntent.intent || "");
     intentPayload = rawIntent.payload || null;
@@ -256,9 +255,8 @@ export function renderTodayPlan() {
     if (focusStep) activeStep = focusStep;
   }
 
-  // Back-compat: Step 2 default view if stabilized or intent, without auto-marking Step 1
+  // Default focus Step 2 if stabilized or intentStep2
   if ((intentName === "today_plan_step2" || stabilizedToday) && state.doneStep < 1) {
-    // Option B: Step 2 focus makes the flow feel natural after Stabilize
     activeStep = 2;
   }
 
@@ -268,6 +266,7 @@ export function renderTodayPlan() {
     build: BUILD,
     intent: intentName || null,
     stabilizedToday,
+    step3CreditToday,
     template: state.template || null,
   });
 
@@ -286,10 +285,11 @@ export function renderTodayPlan() {
   }
 
   // Step 2 allowed if Step 1 advanced OR stabilizedToday
+  // Step 3 allowed if Step 2 advanced OR Move Forward credit today
   function canStartStep(n) {
     if (n === 1) return true;
     if (n === 2) return state.doneStep >= 1 || stabilizedToday;
-    if (n === 3) return state.doneStep >= 2;
+    if (n === 3) return state.doneStep >= 2 || step3CreditToday;
     return false;
   }
 
@@ -303,7 +303,6 @@ export function renderTodayPlan() {
   }
 
   function markStepAdvanced() {
-    // invisible marker only
     state.doneStep = Math.max(state.doneStep, activeStep);
     saveState(state);
   }
@@ -315,7 +314,6 @@ export function renderTodayPlan() {
 
     liveDurationMin = detectMinutes(txt) ?? 10;
 
-    // Token behavior: starting counts
     grantToken();
 
     running = true;
@@ -341,7 +339,6 @@ export function renderTodayPlan() {
         stopTick();
         running = false;
 
-        // Token behavior: window ending counts
         grantToken();
         markStepAdvanced();
 
@@ -370,10 +367,8 @@ export function renderTodayPlan() {
 
     stopTick();
     running = false;
-
     stopElapsedSec = Math.max(0, Math.round(elapsedMs / 1000));
 
-    // Token behavior: early stop counts
     grantToken();
     markStepAdvanced();
 
@@ -392,10 +387,8 @@ export function renderTodayPlan() {
   }
 
   function applyTemplate(t) {
-    // Switching template resets progress (clean mental model)
     state = { ...state, template: t.id, a: t.a, b: t.b, c: t.c, doneStep: 0 };
     saveState(state);
-
     activeStep = 1;
     showTemplates = false;
     mode = "idle";
@@ -406,13 +399,10 @@ export function renderTodayPlan() {
 
   function resetPlan() {
     state = { template: "", a: "", b: "", c: "", doneStep: 0 };
-
     const defaultId = pickDefaultTemplateId(stabilizedToday);
     const t = getTemplateById(defaultId);
     if (t) state = { ...state, template: t.id, a: t.a, b: t.b, c: t.c, doneStep: 0 };
-
     saveState(state);
-
     activeStep = 1;
     showTemplates = false;
     mode = "idle";
@@ -428,6 +418,7 @@ export function renderTodayPlan() {
         el("p", { class: "p" }, ["Three steps only. One window at a time."]),
         String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
         stabilizedToday && state.doneStep < 1 ? el("div", { class: "small" }, ["Stabilized today ✓ (Step 2 available)"]) : null,
+        step3CreditToday && state.doneStep < 2 ? el("div", { class: "small" }, ["Moved forward today ✓ (Step 3 available)"]) : null,
       ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
         el("button", { class: "linkBtn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
@@ -468,28 +459,17 @@ export function renderTodayPlan() {
       sectionLabel("Plan"),
       el("p", { class: "small" }, [`Type: ${currentLabel}`]),
       el("div", { class: "btnRow" }, [
-        el(
-          "button",
-          {
-            class: "btn",
-            type: "button",
-            onClick: () => {
-              showTemplates = !showTemplates;
-              rerender();
-            },
-          },
-          [showTemplates ? "Hide templates" : "Change template"]
-        ),
+        el("button", { class: "btn", type: "button", onClick: () => { showTemplates = !showTemplates; rerender(); } }, [
+          showTemplates ? "Hide templates" : "Change template",
+        ]),
         el("button", { class: "btn", type: "button", onClick: resetPlan }, ["Reset plan"]),
       ]),
       showTemplates
         ? el("div", { class: "flowShell", style: "margin-top:10px" }, [
             el("p", { class: "small" }, ["Switching template resets step progress."]),
-            el(
-              "div",
-              { class: "btnRow" },
-              TEMPLATES.map((t) => el("button", { class: "btn", type: "button", onClick: () => applyTemplate(t) }, [t.label]))
-            ),
+            el("div", { class: "btnRow" }, TEMPLATES.map((t) =>
+              el("button", { class: "btn", type: "button", onClick: () => applyTemplate(t) }, [t.label])
+            )),
           ])
         : null,
       el("div", { style: "height:10px" }, []),
@@ -505,50 +485,25 @@ export function renderTodayPlan() {
     const autoMin = detectMinutes(currentText) ?? 10;
 
     const stepButtons = el("div", { class: "btnRow" }, [
-      el(
-        "button",
-        {
-          class: `btn ${activeStep === 1 ? "btnPrimary" : ""}`.trim(),
-          type: "button",
-          onClick: () => {
-            activeStep = 1;
-            mode = "idle";
-            rerender();
-          },
-        },
-        ["Step 1"]
-      ),
-      el(
-        "button",
-        {
-          class: `btn ${activeStep === 2 ? "btnPrimary" : ""}`.trim(),
-          type: "button",
-          onClick: () => {
-            activeStep = 2;
-            mode = "idle";
-            rerender();
-          },
-          disabled: canStartStep(2) ? false : true,
-        },
-        ["Step 2"]
-      ),
-      el(
-        "button",
-        {
-          class: `btn ${activeStep === 3 ? "btnPrimary" : ""}`.trim(),
-          type: "button",
-          onClick: () => {
-            activeStep = 3;
-            mode = "idle";
-            rerender();
-          },
-          disabled: canStartStep(3) ? false : true,
-        },
-        ["Step 3"]
-      ),
+      el("button", {
+        class: `btn ${activeStep === 1 ? "btnPrimary" : ""}`.trim(),
+        type: "button",
+        onClick: () => { activeStep = 1; mode = "idle"; rerender(); },
+      }, ["Step 1"]),
+      el("button", {
+        class: `btn ${activeStep === 2 ? "btnPrimary" : ""}`.trim(),
+        type: "button",
+        onClick: () => { activeStep = 2; mode = "idle"; rerender(); },
+        disabled: canStartStep(2) ? false : true,
+      }, ["Step 2"]),
+      el("button", {
+        class: `btn ${activeStep === 3 ? "btnPrimary" : ""}`.trim(),
+        type: "button",
+        onClick: () => { activeStep = 3; mode = "idle"; rerender(); },
+        disabled: canStartStep(3) ? false : true,
+      }, ["Step 3"]),
     ]);
 
-    // Card “flips” based on mode (Start -> Active -> Next step)
     if (mode === "running") {
       return el("div", { class: "card cardPad" }, [
         sectionLabel(`Active • Step ${activeStep}`),
@@ -571,27 +526,22 @@ export function renderTodayPlan() {
         el("p", { class: "p" }, [line]),
         el("div", { class: "btnRow" }, [
           hasNext
-            ? el(
-                "button",
-                {
-                  class: "btn btnPrimary",
-                  type: "button",
-                  onClick: () => {
-                    activeStep = nextStep;
-                    mode = "idle";
-                    stopElapsedSec = 0;
-                    rerender();
-                  },
+            ? el("button", {
+                class: "btn btnPrimary",
+                type: "button",
+                onClick: () => {
+                  activeStep = nextStep;
+                  mode = "idle";
+                  stopElapsedSec = 0;
+                  rerender();
                 },
-                [`Step ${nextStep}`]
-              )
+              }, [`Step ${nextStep}`])
             : el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
           el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/reflect") }, ["Clarify"]),
         ]),
       ]);
     }
 
-    // idle
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Start"),
       stepButtons,
