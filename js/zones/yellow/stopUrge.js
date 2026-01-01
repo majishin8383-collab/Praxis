@@ -1,8 +1,14 @@
+/*!
+ * Praxis
+ * © 2025 Joseph Satmary. All rights reserved.
+ * Public demo does not grant a license to use, copy, modify, or distribute.
+ */
+
 // js/zones/yellow/stopUrge.js (FULL REPLACEMENT)
 import { appendLog, setNextIntent } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "SU-12";
+const BUILD = "SU-13";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -163,18 +169,6 @@ export function renderStopUrge() {
     rerender();
   }
 
-  function extend(extraMin) {
-    const remaining = remainingMs();
-    const newRemaining = remaining + extraMin * 60 * 1000;
-    durationMin = Math.ceil(newRemaining / (60 * 1000));
-    endAt = Date.now() + newRemaining;
-
-    safeAppendLog({ kind: "stop_urge_extend", when: nowISO(), extraMin, minutesNow: durationMin, build: BUILD });
-
-    mode = "running";
-    rerender();
-  }
-
   function stopEarly() {
     const now = Date.now();
     const elapsedMs = startAt ? clamp(now - startAt, 0, durationMin * 60 * 1000) : 0;
@@ -228,15 +222,11 @@ export function renderStopUrge() {
 
   function header() {
     return el("div", { class: "flowHeader" }, [
-      el(
-        "div",
-        {},
-        [
-          el("h1", { class: "h1" }, ["Stop the Urge"]),
-          el("p", { class: "p" }, ["Pause. Add friction."]),
-          String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
-        ].filter(Boolean)
-      ),
+      el("div", {}, [
+        el("h1", { class: "h1" }, ["Stop the Urge"]),
+        el("p", { class: "p" }, ["Pause. Add friction."]),
+        String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
+      ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
         el(
           "button",
@@ -274,8 +264,6 @@ export function renderStopUrge() {
         el("div", { class: "timerReadout", "data-timer-readout": "1" }, [formatMMSS(remainingMs())]),
         // NOTE: progress bars intentionally removed per GOVERNANCE.md
         el("div", { class: "btnRow" }, [
-          el("button", { class: "btn", type: "button", onClick: () => extend(5) }, ["+5 min"]),
-          el("button", { class: "btn", type: "button", onClick: () => extend(10) }, ["+10 min"]),
           el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"]),
         ]),
       ]),
@@ -386,10 +374,6 @@ export function renderStopUrge() {
   function closureCard() {
     if (mode !== "closed") return null;
 
-    // Closure sweep:
-    // - Replace "Home" with "Reset"
-    // - Remove extra tool doors (Move Forward / Calm / Emergency etc.)
-    // - Keep only: Run again + Reset + (optional) Next step when "passed"
     const line =
       lastOutcome === "passed" ? "Some space opened up." : lastOutcome === "still_present" ? "The pattern slowed." : "A pause happened.";
 
