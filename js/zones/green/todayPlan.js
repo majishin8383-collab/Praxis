@@ -7,7 +7,7 @@ import {
 } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "TP-19";
+const BUILD = "TP-20";
 
 // ✅ Must match Router
 const KEY_PRIMARY = "praxis_today_plan_v5";
@@ -317,7 +317,6 @@ export function renderTodayPlan() {
     // ✅ Token behavior: completion action counts.
     grantToken();
 
-    // internal log
     safeAppendLog({
       kind: "today_plan_step_complete",
       when: nowISO(),
@@ -329,7 +328,6 @@ export function renderTodayPlan() {
       ...meta,
     });
 
-    // unlock progression
     state.doneStep = Math.max(state.doneStep, activeStep);
     saveState(state);
   }
@@ -338,14 +336,12 @@ export function renderTodayPlan() {
     markStepComplete(meta);
 
     if (activeStep < 3) {
-      const next = activeStep + 1;
-      activeStep = next;
+      activeStep = activeStep + 1;
       statusMode = "idle";
       rerender();
       return;
     }
 
-    // finished plan (no "done" wording)
     statusMode = "advanced";
     rerender();
   }
@@ -504,7 +500,7 @@ export function renderTodayPlan() {
   }
 
   function statusCard() {
-    // stop early => Next step or Continue
+    // stop early => Next step or Continue (+ optional Clarify)
     if (statusMode === "stopped_early") {
       const isLast = activeStep >= 3;
       return el("div", { class: "card cardPad" }, [
@@ -521,14 +517,7 @@ export function renderTodayPlan() {
             type: "button",
             onClick: () => { statusMode = "offer_continue"; rerender(); },
           }, ["Continue"]),
-        ]),
-        el("div", { class: "btnRow" }, [
-          el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/yellow/calm") }, ["Calm Me Down"]),
-          el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/yellow/stop") }, ["Stop the Urge"]),
           el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/reflect") }, ["Clarify"]),
-        ]),
-        el("div", { class: "btnRow" }, [
-          el("button", { class: "btn", type: "button", onClick: () => { statusMode = "idle"; rerender(); } }, ["Back to plan"]),
         ]),
       ]);
     }
@@ -550,21 +539,23 @@ export function renderTodayPlan() {
       ]);
     }
 
+    // continue panel => only continue + next step (+ optional Clarify)
     if (statusMode === "offer_continue") {
+      const isLast = activeStep >= 3;
       return el("div", { class: "card cardPad" }, [
         el("div", { class: "badge" }, ["Continue"]),
-        el("p", { class: "p" }, ["Pick a short extension, or change state."]),
+        el("p", { class: "p" }, ["Short extension only."]),
         el("div", { class: "btnRow" }, [
           el("button", { class: "btn btnPrimary", type: "button", onClick: () => continueAfter(5) }, ["Continue 5 min"]),
           el("button", { class: "btn", type: "button", onClick: () => continueAfter(10) }, ["Continue 10 min"]),
         ]),
         el("div", { class: "btnRow" }, [
-          el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/yellow/calm") }, ["Calm Me Down"]),
-          el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/yellow/stop") }, ["Stop the Urge"]),
+          el("button", {
+            class: "btn",
+            type: "button",
+            onClick: () => advanceOrFinish({ ended: "manual" }),
+          }, [isLast ? "Finish plan" : "Next step"]),
           el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/reflect") }, ["Clarify"]),
-        ]),
-        el("div", { class: "btnRow" }, [
-          el("button", { class: "btn", type: "button", onClick: () => { statusMode = "idle"; rerender(); } }, ["Back to plan"]),
         ]),
       ]);
     }
@@ -573,7 +564,7 @@ export function renderTodayPlan() {
     if (statusMode === "advanced") {
       return el("div", { class: "card cardPad" }, [
         el("div", { class: "badge" }, ["Plan complete"]),
-        el("p", { class: "p" }, ["Reset, or choose a new direction."]),
+        el("p", { class: "p" }, ["Reset, or build a new plan."]),
         el("div", { class: "btnRow" }, [
           el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
           el("button", { class: "btn", type: "button", onClick: resetPlan }, ["New plan"]),
