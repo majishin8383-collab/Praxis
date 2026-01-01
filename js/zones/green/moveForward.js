@@ -1,8 +1,8 @@
 // js/zones/green/moveForward.js (FULL REPLACEMENT)
-import { appendLog } from "../../storage.js";
+import { appendLog, setNextIntent } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "MF-10";
+const BUILD = "MF-11";
 
 // light persistence so "Quick start" feels smart without being complex
 const KEY_LAST = "praxis_move_forward_last_v1";
@@ -43,6 +43,7 @@ function getLastLadder() {
     return "";
   }
 }
+
 function setLastLadder(id) {
   try {
     localStorage.setItem(KEY_LAST, String(id || ""));
@@ -106,7 +107,7 @@ export function renderMoveForward() {
 
   // default selection tries to be “smart” but never forces it
   const last = getLastLadder();
-  let selectedLadderId = last ? findLadder(last).id : LADDERS[0].id;
+  let selectedLadderId = last && findLadder(last) ? last : LADDERS[0].id;
 
   // timer state
   let running = false;
@@ -116,7 +117,7 @@ export function renderMoveForward() {
   let tick = null;
 
   // UI state
-  // ✅ Quick Start and All Ladders are mutually exclusive views
+  // Mutually exclusive views (no duplicates)
   let showAllLadders = false;
 
   // bookkeeping
@@ -149,11 +150,12 @@ export function renderMoveForward() {
 
   function startSelected() {
     const ladder = findLadder(selectedLadderId);
+
     running = true;
     stoppedEarly = false;
     elapsedSec = 0;
-    durationMin = ladder.minutes;
 
+    durationMin = ladder.minutes;
     startAt = Date.now();
     endAt = Date.now() + durationMin * 60 * 1000;
 
@@ -273,7 +275,7 @@ export function renderMoveForward() {
             class: "btn",
             type: "button",
             onClick: () => {
-              // ✅ Switch views (no duplication): Quick Start disappears, All Ladders appears
+              // Switch views (no duplication): Quick Start disappears, All Ladders appears
               showAllLadders = true;
               rerender();
             },
@@ -296,7 +298,6 @@ export function renderMoveForward() {
             class: "btn",
             type: "button",
             onClick: () => {
-              // ✅ Switch back
               showAllLadders = false;
               rerender();
             },
@@ -309,6 +310,7 @@ export function renderMoveForward() {
 
   function selectedCard() {
     const ladder = findLadder(selectedLadderId);
+
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Selected"),
       el("h2", { class: "h2" }, [ladder.title]),
@@ -317,15 +319,11 @@ export function renderMoveForward() {
         "div",
         { class: "flowShell", style: "margin-top:10px" },
         ladder.steps.map((s) =>
-          el("div", { style: "padding:10px 0;border-bottom:1px solid var(--line);" }, [
-            el("div", { style: "font-weight:900;" }, [s]),
-          ])
+          el("div", { style: "padding:10px 0;border-bottom:1px solid var(--line);" }, [el("div", { style: "font-weight:900;" }, [s])])
         )
       ),
       el("div", { class: "btnRow", style: "margin-top:12px" }, [
-        el("button", { class: "btn btnPrimary", type: "button", onClick: startSelected }, [
-          `Start • ${ladder.minutes} min`,
-        ]),
+        el("button", { class: "btn btnPrimary", type: "button", onClick: startSelected }, [`Start • ${ladder.minutes} min`]),
         el(
           "button",
           {
@@ -358,7 +356,24 @@ export function renderMoveForward() {
 
   function closureCard() {
     if (mode !== "done") return null;
-    const line = stoppedEarly ? `Some motion happened (${elapsedSec}s).` : "The timer ended.";
+
+    const line = stoppedEarly ? `Some motion happened (${elapsedSec}s).` : "The window ended.";
+
+    const nextStepBtn = el(
+      "button",
+      {
+        class: "btn",
+        type: "button",
+        onClick: () => {
+          // Best-effort handoff so Today’s Plan opens ready (Step 2 when appropriate)
+          try {
+            setNextIntent("today_plan_step2");
+          } catch {}
+          location.hash = "#/green/today";
+        },
+      },
+      ["Next step"]
+    );
 
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Readiness"),
@@ -376,6 +391,7 @@ export function renderMoveForward() {
           },
           ["Choose another ladder"]
         ),
+        nextStepBtn,
         el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
       ]),
     ]);
@@ -386,7 +402,7 @@ export function renderMoveForward() {
     wrap.appendChild(header());
 
     if (mode === "pick") {
-      // ✅ Mutually exclusive views (no duplicates)
+      // Mutually exclusive views (no duplicates)
       wrap.appendChild(showAllLadders ? allLaddersCard() : quickStartCard());
       return;
     }
