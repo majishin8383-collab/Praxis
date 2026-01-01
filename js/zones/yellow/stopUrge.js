@@ -2,7 +2,7 @@
 import { appendLog, setNextIntent } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "SU-11";
+const BUILD = "SU-12";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -181,6 +181,7 @@ export function renderStopUrge() {
 
     stopTick();
     running = false;
+
     stoppedEarly = true;
     elapsedSec = Math.max(0, Math.round(elapsedMs / 1000));
 
@@ -227,11 +228,15 @@ export function renderStopUrge() {
 
   function header() {
     return el("div", { class: "flowHeader" }, [
-      el("div", {}, [
-        el("h1", { class: "h1" }, ["Stop the Urge"]),
-        el("p", { class: "p" }, ["Pause. Add friction."]),
-        String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
-      ].filter(Boolean)),
+      el(
+        "div",
+        {},
+        [
+          el("h1", { class: "h1" }, ["Stop the Urge"]),
+          el("p", { class: "p" }, ["Pause. Add friction."]),
+          String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
+        ].filter(Boolean)
+      ),
       el("div", { class: "flowMeta" }, [
         el(
           "button",
@@ -244,7 +249,7 @@ export function renderStopUrge() {
               location.hash = "#/home";
             },
           },
-          ["Home"]
+          ["Reset"]
         ),
       ]),
     ]);
@@ -381,34 +386,31 @@ export function renderStopUrge() {
   function closureCard() {
     if (mode !== "closed") return null;
 
-    // Primary completion state for Stop the Urge is RELIEF.
-    // Closure must: name state -> return agency -> release.
+    // Closure sweep:
+    // - Replace "Home" with "Reset"
+    // - Remove extra tool doors (Move Forward / Calm / Emergency etc.)
+    // - Keep only: Run again + Reset + (optional) Next step when "passed"
     const line =
-      lastOutcome === "passed"
-        ? "Some space opened up."
-        : lastOutcome === "still_present"
-        ? "The pattern slowed."
-        : "A pause happened.";
+      lastOutcome === "passed" ? "Some space opened up." : lastOutcome === "still_present" ? "The pattern slowed." : "A pause happened.";
 
-    const nextRow =
-      lastOutcome === "still_present"
-        ? el("div", { class: "btnRow" }, [
-            el("button", { class: "btn btnPrimary", type: "button", onClick: () => startPause(10) }, ["Pause 10 min"]),
-            el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/yellow/calm") }, [
-              "Calm Me Down",
-            ]),
-            el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/red/emergency") }, [
-              "Emergency",
-            ]),
-          ])
-        : el("div", { class: "btnRow" }, [
-            el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/move") }, [
-              "Move Forward",
-            ]),
-            el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/today") }, [
-              "Today’s Plan",
-            ]),
-          ]);
+    const nextStepBtn =
+      lastOutcome === "passed"
+        ? el(
+            "button",
+            {
+              class: "btn",
+              type: "button",
+              onClick: () => {
+                // intent already set inside logOutcome when passed, but keep resilient
+                try {
+                  setNextIntent("today_plan_step2");
+                } catch {}
+                location.hash = "#/green/today";
+              },
+            },
+            ["Next step"]
+          )
+        : null;
 
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Relief"),
@@ -427,9 +429,9 @@ export function renderStopUrge() {
           },
           ["Run again"]
         ),
-        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Home"]),
-      ]),
-      nextRow,
+        nextStepBtn,
+        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
+      ].filter(Boolean)),
     ]);
   }
 
