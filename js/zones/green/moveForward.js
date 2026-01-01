@@ -2,7 +2,7 @@
 import { appendLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "MF-9";
+const BUILD = "MF-10";
 
 // light persistence so "Quick start" feels smart without being complex
 const KEY_LAST = "praxis_move_forward_last_v1";
@@ -25,7 +25,6 @@ function el(tag, attrs = {}, children = []) {
 }
 
 const nowISO = () => new Date().toISOString();
-
 function safeAppendLog(entry) {
   try {
     appendLog(entry);
@@ -44,7 +43,6 @@ function getLastLadder() {
     return "";
   }
 }
-
 function setLastLadder(id) {
   try {
     localStorage.setItem(KEY_LAST, String(id || ""));
@@ -108,7 +106,7 @@ export function renderMoveForward() {
 
   // default selection tries to be “smart” but never forces it
   const last = getLastLadder();
-  let selectedLadderId = last && findLadder(last) ? last : LADDERS[0].id;
+  let selectedLadderId = last ? findLadder(last).id : LADDERS[0].id;
 
   // timer state
   let running = false;
@@ -118,7 +116,7 @@ export function renderMoveForward() {
   let tick = null;
 
   // UI state
-  // ✅ Option C: Quick Start and All Ladders are mutually exclusive views
+  // ✅ Quick Start and All Ladders are mutually exclusive views
   let showAllLadders = false;
 
   // bookkeeping
@@ -151,12 +149,11 @@ export function renderMoveForward() {
 
   function startSelected() {
     const ladder = findLadder(selectedLadderId);
-
     running = true;
     stoppedEarly = false;
     elapsedSec = 0;
-
     durationMin = ladder.minutes;
+
     startAt = Date.now();
     endAt = Date.now() + durationMin * 60 * 1000;
 
@@ -197,24 +194,6 @@ export function renderMoveForward() {
     rerender();
   }
 
-  function extend(extraMin) {
-    const remaining = remainingMs();
-    const newRemaining = remaining + extraMin * 60 * 1000;
-    durationMin = Math.ceil(newRemaining / (60 * 1000));
-    endAt = Date.now() + newRemaining;
-
-    safeAppendLog({
-      kind: "move_forward_extend",
-      when: nowISO(),
-      ladderId: selectedLadderId,
-      extraMin,
-      minutesNow: durationMin,
-      build: BUILD,
-    });
-
-    rerender();
-  }
-
   function stopEarly() {
     const now = Date.now();
     const elapsedMs = startAt ? clamp(now - startAt, 0, durationMin * 60 * 1000) : 0;
@@ -247,7 +226,7 @@ export function renderMoveForward() {
         String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
       ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
-        el("button", { class: "linkBtn", type: "button", onClick: () => (location.hash = "#/home") }, ["Home"]),
+        el("button", { class: "linkBtn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
       ]),
     ]);
   }
@@ -277,7 +256,6 @@ export function renderMoveForward() {
     // Curated set only
     const recommended = ["walk", "micro_task", "reset_body"];
     const lastId = getLastLadder();
-
     // If last ladder exists and is NOT in the recommended set, show it as a 4th option.
     const showResume = !!lastId && !recommended.includes(lastId);
 
@@ -302,7 +280,6 @@ export function renderMoveForward() {
           },
           ["More ladders"]
         ),
-        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/today") }, ["Today’s Plan"]),
       ]),
     ]);
   }
@@ -326,7 +303,6 @@ export function renderMoveForward() {
           },
           ["Show fewer ladders"]
         ),
-        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/today") }, ["Today’s Plan"]),
       ]),
     ]);
   }
@@ -347,7 +323,9 @@ export function renderMoveForward() {
         )
       ),
       el("div", { class: "btnRow", style: "margin-top:12px" }, [
-        el("button", { class: "btn btnPrimary", type: "button", onClick: startSelected }, [`Start • ${ladder.minutes} min`]),
+        el("button", { class: "btn btnPrimary", type: "button", onClick: startSelected }, [
+          `Start • ${ladder.minutes} min`,
+        ]),
         el(
           "button",
           {
@@ -372,8 +350,6 @@ export function renderMoveForward() {
         el("div", { class: "timerReadout", "data-timer-readout": "1" }, [formatMMSS(remainingMs())]),
         // progress bars intentionally removed per GOVERNANCE.md
         el("div", { class: "btnRow" }, [
-          el("button", { class: "btn", type: "button", onClick: () => extend(3) }, ["+3 min"]),
-          el("button", { class: "btn", type: "button", onClick: () => extend(5) }, ["+5 min"]),
           el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"]),
         ]),
       ]),
@@ -382,7 +358,6 @@ export function renderMoveForward() {
 
   function closureCard() {
     if (mode !== "done") return null;
-
     const line = stoppedEarly ? `Some motion happened (${elapsedSec}s).` : "The timer ended.";
 
     return el("div", { class: "card cardPad" }, [
@@ -401,11 +376,7 @@ export function renderMoveForward() {
           },
           ["Choose another ladder"]
         ),
-        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Home"]),
-      ]),
-      el("div", { class: "btnRow", style: "margin-top:10px" }, [
-        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/today") }, ["Today’s Plan"]),
-        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/yellow/stop") }, ["Stop the Urge"]),
+        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
       ]),
     ]);
   }
