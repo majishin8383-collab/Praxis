@@ -28,7 +28,6 @@ function localDayStamp() {
 
 function normalizeKind(kind) {
   const k = String(kind || "").trim();
-
   // Broad aliasing for older builds / experiments.
   const map = {
     // Stop Urge
@@ -54,7 +53,6 @@ function normalizeKind(kind) {
     stop_urge_end: "stop_urge",
     move_forward_end: "move_forward",
   };
-
   return map[k] || k;
 }
 
@@ -80,7 +78,7 @@ function shouldGrantStabilizeCredit(entry) {
   if (kind === "calm_start" || kind === "calm_stop") return true;
 
   // Today’s Plan parity: any step timer interaction counts
-  if (kind.startsWith("today_plan_step_")) return true; // step_start/step_stop/step_end/etc
+  if (kind.startsWith("today_plan_step_")) return true; // step_start/step_stop/step_window_end/etc
   if (kind === "today_plan_continue_start") return true;
   if (kind === "today_plan_step") return true;
 
@@ -109,6 +107,7 @@ export function appendLog(entry) {
   // Persist log (cap)
   const log = readLog();
   log.unshift(e);
+
   try {
     localStorage.setItem(KEY_LOG, JSON.stringify(log.slice(0, 300)));
   } catch {}
@@ -143,6 +142,7 @@ export function clearStabilizeCredit() {
 }
 
 // ---------- intent handoff ----------
+// Back-compat: keep storing {intent, ts} for string intents.
 export function setNextIntent(intent) {
   try {
     localStorage.setItem(
@@ -152,6 +152,28 @@ export function setNextIntent(intent) {
   } catch {}
 }
 
+/**
+ * New: set an intent with a payload.
+ * - Does NOT break older consumers (they can continue calling consumeNextIntent()).
+ * - Payload must be JSON-serializable.
+ */
+export function setNextIntentData(intent, payload = null) {
+  try {
+    localStorage.setItem(
+      KEY_NEXT_INTENT,
+      JSON.stringify({
+        intent: String(intent || ""),
+        payload: payload === undefined ? null : payload,
+        ts: Date.now(),
+      })
+    );
+  } catch {}
+}
+
+/**
+ * Back-compat: returns ONLY the intent string (or null).
+ * If an entry includes a payload, it is ignored here.
+ */
 export function consumeNextIntent(maxAgeMinutes = 30) {
   try {
     const raw = localStorage.getItem(KEY_NEXT_INTENT);
@@ -178,4 +200,42 @@ export function consumeNextIntent(maxAgeMinutes = 30) {
     } catch {}
     return null;
   }
+}
+
+/**
+ * New: consumes intent + payload.
+ * Returns: { intent: string, payload: any|null } or null.
+ */
+export function consumeNextIntentData(maxAgeMinutes = 30) {
+  try {
+    const raw = localStorage.getItem(KEY_NEXT_INTENT);
+    if (!raw) return null;
+
+    // one-time read+clear
+    localStorage.removeItem(KEY_NEXT_INTENT);
+
+    const parsed = JSON.parse(raw);
+    const intent = parsed?.intent ? String(parsed.intent) : "";
+    const payload = parsed?.payload ?? null;
+    const ts = Number(parsed?.ts || 0);
+
+    if (!intent) return null;
+    if (!Number.isFinite(ts) || ts <= 0) return { intent, payload };
+
+    const ageMs = Date.now() - ts;
+    if (ageMs > maxAgeMinutes * 60 * 1000) return null;
+
+    return { intent, payload };
+  } catch {
+    try {
+      localStorage.removeItem(KEY_NEXT_INTENT);
+    } catch {}
+    return null;
+  }
+}
+
+export function clearNextIntent() {
+  try {
+    localStorage.removeItem(KEY_NEXT_INTENT);
+  } catch {}
 }
