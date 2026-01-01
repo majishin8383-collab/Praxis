@@ -13,7 +13,7 @@ import {
 } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "TP-20";
+const BUILD = "TP-21";
 
 // ✅ Must match Router
 const KEY_PRIMARY = "praxis_today_plan_v5";
@@ -158,11 +158,28 @@ function sectionLabel(text) {
   return el("div", { class: "small", style: "opacity:.85;font-weight:800;letter-spacing:.02em;" }, [text]);
 }
 
+function templateDefaultForStep(templateId, stepNum) {
+  const t = getTemplateById(templateId);
+  if (!t) return "";
+  if (stepNum === 1) return String(t.a || "");
+  if (stepNum === 2) return String(t.b || "");
+  return String(t.c || "");
+}
+
+// overwrite-safe if the current value is exactly the template default (i.e. not user-authored)
+function canOverwriteBecauseTemplateDefault(state, stepNum) {
+  if (!state?.template) return false;
+  if (state.template === "custom") return false;
+  const current = stepNum === 1 ? String(state.a || "") : stepNum === 2 ? String(state.b || "") : String(state.c || "");
+  const def = templateDefaultForStep(state.template, stepNum);
+  return current.trim() && def.trim() && current.trim() === def.trim();
+}
+
 /**
  * Auto-fill rule:
- * - Never overwrite a non-empty user step.
- * - If source provides a target step, fill that step if empty.
- * - Option B routing: prefer focus Step 2 (Act) after Stabilize + Move Forward.
+ * - Never overwrite user-written text.
+ * - DO overwrite template-default text (because it’s scaffold, not the user’s plan).
+ * - Option B routing: focus Step 2 after Stabilize + Move Forward.
  */
 function prefillFromIntent(state, stabilizedToday, intentObj) {
   const payload = intentObj?.payload && typeof intentObj.payload === "object" ? intentObj.payload : null;
@@ -175,10 +192,14 @@ function prefillFromIntent(state, stabilizedToday, intentObj) {
   if (text && target) {
     const key = target === 1 ? "a" : target === 2 ? "b" : "c";
     const current = String(state[key] || "").trim();
-    if (!current) {
+
+    const overwriteOk = canOverwriteBecauseTemplateDefault(state, target);
+
+    if (!current || overwriteOk) {
       state = {
         ...state,
         [key]: text,
+        // If they’re on a template and we overwrite one field, it becomes “custom”
         template: state.template && state.template !== "custom" ? "custom" : state.template || "custom",
       };
     }
