@@ -2,12 +2,12 @@
 import { appendLog, setNextIntent } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "MF-14";
+const BUILD = "MF-15";
 
 // light persistence so "Quick start" feels smart without being complex
 const KEY_LAST = "praxis_move_forward_last_v1";
 
-// Step 3 unlock credit (day stamp)
+// Step 3 unlock credit (day stamp) — used by Today Plan
 const KEY_TP3_CREDIT_DAY = "praxis_today_plan_step3_credit_day_v1";
 
 // Uses device-local day stamp.
@@ -44,7 +44,6 @@ function el(tag, attrs = {}, children = []) {
 }
 
 const nowISO = () => new Date().toISOString();
-
 function safeAppendLog(entry) {
   try {
     appendLog(entry);
@@ -73,17 +72,68 @@ function setLastLadder(id) {
   } catch {}
 }
 
+/**
+ * tpStep mapping:
+ * - tpStep: 2 => Act (fills Today Plan Step 2)
+ * - tpStep: 3 => Move (fills Today Plan Step 3)
+ */
 const LADDERS = [
-  { id: "walk", title: "Walk + breathe", desc: "Move your body. Let the mind settle behind you.", minutes: 5, steps: ["Stand up. Shoulders down.", "Walk anywhere (inside is fine).", "In 4 → out 6. Keep moving."] },
-  { id: "micro_task", title: "Micro-task (2 minutes)", desc: "Small motion to restart momentum.", minutes: 2, steps: ["Pick one tiny task.", "Set 2 minutes. Begin.", "When it ends: you can stop."] },
-  { id: "reset_body", title: "Body reset", desc: "Simple reps to change state.", minutes: 5, steps: ["20 slow squats (or chair sits).", "20 wall push-ups (or countertop).", "60s stretch: neck + chest + hips."] },
-  { id: "water_light", title: "Water + light", desc: "Hydrate, brighten, regulate.", minutes: 3, steps: ["Drink a full glass of water.", "Step into brighter light / outside if possible.", "3 slow exhales. Keep eyes soft."] },
-  { id: "clean_3", title: "Clean 3 things", desc: "Small order can reduce noise.", minutes: 5, steps: ["Grab a bag or basket.", "Put away 3 things.", "Wipe one surface for 60 seconds."] },
-  { id: "outside_reset", title: "Outside reset", desc: "Change the scene to change the state.", minutes: 7, steps: ["Put on shoes.", "Walk a short loop.", "Look far away for 10 seconds. Exhale longer."] },
+  {
+    id: "walk",
+    tpStep: 3,
+    title: "Walk + breathe",
+    desc: "Move your body. Let the mind settle behind you.",
+    minutes: 5,
+    steps: ["Stand up. Shoulders down.", "Walk anywhere (inside is fine).", "In 4 → out 6. Keep moving."],
+  },
+  {
+    id: "micro_task",
+    tpStep: 2,
+    title: "Micro-task (2 minutes)",
+    desc: "Small motion to restart momentum.",
+    minutes: 2,
+    steps: ["Pick one tiny task.", "Set 2 minutes. Begin.", "When it ends: you can stop."],
+  },
+  {
+    id: "reset_body",
+    tpStep: 3,
+    title: "Body reset",
+    desc: "Simple reps to change state.",
+    minutes: 5,
+    steps: ["20 slow squats (or chair sits).", "20 wall push-ups (or countertop).", "60s stretch: neck + chest + hips."],
+  },
+  {
+    id: "water_light",
+    tpStep: 2,
+    title: "Water + light",
+    desc: "Hydrate, brighten, regulate.",
+    minutes: 3,
+    steps: ["Drink a full glass of water.", "Step into brighter light / outside if possible.", "3 slow exhales. Keep eyes soft."],
+  },
+  {
+    id: "clean_3",
+    tpStep: 2,
+    title: "Clean 3 things",
+    desc: "Small order can reduce noise.",
+    minutes: 5,
+    steps: ["Grab a bag or basket.", "Put away 3 things.", "Wipe one surface for 60 seconds."],
+  },
+  {
+    id: "outside_reset",
+    tpStep: 3,
+    title: "Outside reset",
+    desc: "Change the scene to change the state.",
+    minutes: 7,
+    steps: ["Put on shoes.", "Walk a short loop.", "Look far away for 10 seconds. Exhale longer."],
+  },
 ];
 
 function findLadder(id) {
   return LADDERS.find((x) => x.id === id) || LADDERS[0];
+}
+
+function ladderPlanText(ladder) {
+  return `${ladder.title} (${ladder.minutes} min)`;
 }
 
 export function renderMoveForward() {
@@ -125,16 +175,25 @@ export function renderMoveForward() {
     if (readout) readout.textContent = formatMMSS(remainingMs());
   }
 
-  function goTodayWithPrefill(ladder) {
-    const txt = `${ladder.title} (${ladder.minutes} min)`;
+  /**
+   * Prefill rule:
+   * - Act ladders => fill Step 2, focus Step 2
+   * - Move ladders => fill Step 3, focus Step 3
+   * Optional:
+   * - advanceDoneStep: mark that step “done” in Today Plan on open (no visible marker)
+   */
+  function goTodayWithPrefill(ladder, { advanceDone = false } = {}) {
+    const step = ladder.tpStep === 3 ? 3 : 2;
+    const txt = ladderPlanText(ladder);
 
-    // ✅ Correct mapping: Move Forward → Today Plan Step 3
     try {
       setNextIntent("today_plan_prefill", {
         from: "move_forward",
-        targetStep: 3,
+        targetStep: step,
         text: txt,
-        focusStep: 3,
+        focusStep: step,
+        // Optional: mark step done (Today Plan must support this; TP-22 below does)
+        advanceDoneStep: advanceDone ? step : 0,
       });
     } catch {}
 
@@ -149,11 +208,16 @@ export function renderMoveForward() {
     rerender();
   }
 
+  function maybeGrantStep3Credit(ladder) {
+    // Only “Move” ladders should unlock Step 3
+    if (ladder.tpStep === 3) grantStep3CreditToday();
+  }
+
   function startSelected() {
     const ladder = findLadder(selectedLadderId);
 
-    // ✅ Starting a ladder unlocks Today Plan Step 3 (internal, no visible marker)
-    grantStep3CreditToday();
+    // If they start a “Move” ladder, unlock Step 3 in Today Plan
+    maybeGrantStep3Credit(ladder);
 
     running = true;
     stoppedEarly = false;
@@ -168,6 +232,7 @@ export function renderMoveForward() {
       ladderId: ladder.id,
       ladderTitle: ladder.title,
       minutes: durationMin,
+      tpStep: ladder.tpStep,
       build: BUILD,
     });
 
@@ -178,8 +243,8 @@ export function renderMoveForward() {
         stopTick();
         running = false;
 
-        // reinforce credit
-        grantStep3CreditToday();
+        // reinforce credit on completion
+        maybeGrantStep3Credit(ladder);
 
         safeAppendLog({
           kind: "move_forward_end",
@@ -188,6 +253,7 @@ export function renderMoveForward() {
           minutesPlanned: durationMin,
           stoppedEarly: false,
           elapsedSec: durationMin * 60,
+          tpStep: ladder.tpStep,
           build: BUILD,
         });
 
@@ -206,14 +272,15 @@ export function renderMoveForward() {
     const now = Date.now();
     const elapsedMs = startAt ? clamp(now - startAt, 0, durationMin * 60 * 1000) : 0;
 
+    const ladder = findLadder(selectedLadderId);
+
     stopTick();
     running = false;
-
     stoppedEarly = true;
     elapsedSec = Math.max(0, Math.round(elapsedMs / 1000));
 
-    // reinforce credit
-    grantStep3CreditToday();
+    // reinforce credit even on early stop
+    maybeGrantStep3Credit(ladder);
 
     safeAppendLog({
       kind: "move_forward_stop",
@@ -222,6 +289,7 @@ export function renderMoveForward() {
       minutesPlanned: durationMin,
       stoppedEarly: true,
       elapsedSec,
+      tpStep: ladder.tpStep,
       build: BUILD,
     });
 
@@ -243,6 +311,7 @@ export function renderMoveForward() {
   }
 
   function ladderTile(l, labelOverride = null) {
+    const tag = l.tpStep === 3 ? "Move" : "Act";
     return el(
       "button",
       { class: "actionTile", type: "button", onClick: () => selectAndAdvance(l.id) },
@@ -250,7 +319,7 @@ export function renderMoveForward() {
         el("div", { class: "tileTop" }, [
           el("div", {}, [
             el("div", { class: "tileTitle" }, [labelOverride || l.title]),
-            el("div", { class: "tileSub" }, [`${l.minutes} min • ${l.desc}`]),
+            el("div", { class: "tileSub" }, [`${l.minutes} min • ${tag} • ${l.desc}`]),
           ]),
           el("div", { class: "zoneDot dotGreen" }, []),
         ]),
@@ -273,7 +342,7 @@ export function renderMoveForward() {
       ].filter(Boolean)),
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
         el("button", { class: "btn", type: "button", onClick: () => { showAllLadders = true; rerender(); } }, ["More ladders"]),
-        // Prefill Step 3 using current selection (last/remembered)
+        // Prefill based on last/remembered selection
         el("button", { class: "btn", type: "button", onClick: () => goTodayWithPrefill(findLadder(selectedLadderId)) }, ["Today’s Plan"]),
       ]),
     ]);
@@ -293,10 +362,12 @@ export function renderMoveForward() {
 
   function selectedCard() {
     const ladder = findLadder(selectedLadderId);
+    const tag = ladder.tpStep === 3 ? "Move" : "Act";
+
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Selected"),
       el("h2", { class: "h2" }, [ladder.title]),
-      el("p", { class: "p" }, [ladder.desc]),
+      el("p", { class: "p" }, [`${tag}. ${ladder.desc}`]),
       el("div", { class: "flowShell", style: "margin-top:10px" }, ladder.steps.map((s) =>
         el("div", { style: "padding:10px 0;border-bottom:1px solid var(--line);" }, [
           el("div", { style: "font-weight:900;" }, [s]),
@@ -332,8 +403,9 @@ export function renderMoveForward() {
       sectionLabel("Next step"),
       el("p", { class: "p" }, [line]),
       el("div", { class: "btnRow" }, [
-        // Prefill Step 3 with the ladder that actually ran
-        el("button", { class: "btn btnPrimary", type: "button", onClick: () => goTodayWithPrefill(ladder) }, ["Today’s Plan"]),
+        // Prefill the correct step based on what actually ran
+        // Optional: mark that step as done on open
+        el("button", { class: "btn btnPrimary", type: "button", onClick: () => goTodayWithPrefill(ladder, { advanceDone: true }) }, ["Today’s Plan"]),
         el("button", { class: "btn", type: "button", onClick: () => { mode = "pick"; rerender(); } }, ["Run again"]),
       ]),
     ]);
@@ -347,13 +419,10 @@ export function renderMoveForward() {
       wrap.appendChild(showAllLadders ? allLaddersCard() : quickStartCard());
       return;
     }
-
     if (mode === "selected") wrap.appendChild(selectedCard());
     if (mode === "running") wrap.appendChild(runningCard());
-
     const c = closureCard();
     if (c) wrap.appendChild(c);
-
     if (running) updateTimerUI();
   }
 
