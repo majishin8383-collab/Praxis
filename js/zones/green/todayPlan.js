@@ -1,3 +1,9 @@
+/*!
+ * Praxis
+ * © 2025 Joseph Satmary. All rights reserved.
+ * Public demo does not grant a license to use, copy, modify, or distribute.
+ */
+
 // js/zones/green/todayPlan.js  (FULL REPLACEMENT)
 import {
   appendLog,
@@ -7,7 +13,7 @@ import {
 } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "TP-21";
+const BUILD = "TP-18";
 
 // ✅ Must match Router
 const KEY_PRIMARY = "praxis_today_plan_v5";
@@ -33,12 +39,16 @@ function el(tag, attrs = {}, children = []) {
 
 const nowISO = () => new Date().toISOString();
 function safeAppendLog(entry) {
-  try { appendLog(entry); } catch {}
+  try {
+    appendLog(entry);
+  } catch {}
 }
 
 // ✅ Token grant should be idempotent (day-stamp). Best-effort only.
 function grantToken() {
-  try { grantStabilizeCreditToday(); } catch {}
+  try {
+    grantStabilizeCreditToday();
+  } catch {}
 }
 
 function normalizeState(s) {
@@ -65,7 +75,9 @@ function readState() {
 }
 
 function saveState(s) {
-  try { localStorage.setItem(KEY_PRIMARY, JSON.stringify(s)); } catch {}
+  try {
+    localStorage.setItem(KEY_PRIMARY, JSON.stringify(s));
+  } catch {}
 }
 
 const TEMPLATES = [
@@ -122,6 +134,11 @@ function detectMinutes(text) {
   return null;
 }
 
+function sectionLabel(text) {
+  // Avoid "badge" UI to comply with GOVERNANCE.md
+  return el("div", { class: "small", style: "opacity:.85;font-weight:800;letter-spacing:.02em;" }, [text]);
+}
+
 export function renderTodayPlan() {
   const wrap = el("div", { class: "flowShell" });
 
@@ -136,17 +153,22 @@ export function renderTodayPlan() {
   let tick = null;
 
   // UI state
-  // idle | running | ended
+  // idle | running | window_end
   let mode = "idle";
   let stopElapsedSec = 0;
-  let endedWhy = ""; // "time" | "early"
 
-  // templates UI
+  // plan type panel (collapsed)
   let showTemplates = false;
 
   // handoff / credit
   const intent = consumeNextIntent();
-  const stabilizedToday = hasStabilizeCreditToday();
+  const stabilizedToday = (() => {
+    try {
+      return hasStabilizeCreditToday();
+    } catch {
+      return false;
+    }
+  })();
 
   // Always template-based by default unless user already has content
   if (isBlankPlan(state)) {
@@ -163,7 +185,7 @@ export function renderTodayPlan() {
     }
   }
 
-  // Step 2 default view if stabilized or intent, without auto-marking Step 1 complete
+  // Step 2 default view if stabilized or intent, without auto-marking Step 1
   if ((intent === "today_plan_step2" || stabilizedToday) && state.doneStep < 1) {
     activeStep = 2;
   }
@@ -191,7 +213,7 @@ export function renderTodayPlan() {
     return c;
   }
 
-  // Step 2 allowed if Step 1 complete OR stabilizedToday
+  // Step 2 allowed if Step 1 advanced OR stabilizedToday
   function canStartStep(n) {
     if (n === 1) return true;
     if (n === 2) return state.doneStep >= 1 || stabilizedToday;
@@ -199,10 +221,19 @@ export function renderTodayPlan() {
     return false;
   }
 
+  function remainingMs() {
+    return clamp(endAt - Date.now(), 0, liveDurationMin * 60 * 1000);
+  }
+
   function updateTimerUI() {
-    const remaining = clamp(endAt - Date.now(), 0, liveDurationMin * 60 * 1000);
     const readout = wrap.querySelector("[data-timer-readout]");
-    if (readout) readout.textContent = formatMMSS(remaining);
+    if (readout) readout.textContent = formatMMSS(remainingMs());
+  }
+
+  function markStepAdvanced() {
+    // invisible marker only
+    state.doneStep = Math.max(state.doneStep, activeStep);
+    saveState(state);
   }
 
   function startTimerForStep() {
@@ -212,10 +243,12 @@ export function renderTodayPlan() {
 
     liveDurationMin = detectMinutes(txt) ?? 10;
 
-    // Token behavior: starting counts.
+    // Token behavior: starting counts
     grantToken();
 
     running = true;
+    mode = "running";
+    stopElapsedSec = 0;
     startAt = Date.now();
     endAt = Date.now() + liveDurationMin * 60 * 1000;
 
@@ -232,19 +265,30 @@ export function renderTodayPlan() {
     stopTick();
     tick = setInterval(() => {
       if (!running) return;
-      const remaining = endAt - Date.now();
-      if (remaining <= 0) {
+      if (endAt - Date.now() <= 0) {
         stopTick();
         running = false;
-        mode = "ended";
-        endedWhy = "time";
+
+        // Token behavior: window ending counts
+        grantToken();
+        markStepAdvanced();
+
+        safeAppendLog({
+          kind: "today_plan_step_window_end",
+          when: nowISO(),
+          template: state.template || "custom",
+          minutesPlanned: liveDurationMin,
+          step: activeStep,
+          build: BUILD,
+        });
+
+        mode = "window_end";
         rerender();
       } else {
         updateTimerUI();
       }
     }, 250);
 
-    mode = "running";
     rerender();
   }
 
@@ -254,10 +298,12 @@ export function renderTodayPlan() {
 
     stopTick();
     running = false;
+
     stopElapsedSec = Math.max(0, Math.round(elapsedMs / 1000));
 
-    // Token behavior: stopping early counts.
+    // Token behavior: early stop counts
     grantToken();
+    markStepAdvanced();
 
     safeAppendLog({
       kind: "today_plan_step_stop",
@@ -269,58 +315,19 @@ export function renderTodayPlan() {
       build: BUILD,
     });
 
-    mode = "ended";
-    endedWhy = "early";
-    rerender();
-  }
-
-  // Silent completion marker (no "done" anywhere)
-  function markStepComplete(meta = {}) {
-    // completion action counts
-    grantToken();
-
-    safeAppendLog({
-      kind: "today_plan_step_complete",
-      when: nowISO(),
-      template: state.template || "custom",
-      step: activeStep,
-      stepText: stepText(activeStep),
-      minutes: liveDurationMin,
-      build: BUILD,
-      ...meta,
-    });
-
-    state.doneStep = Math.max(state.doneStep, activeStep);
-    saveState(state);
-  }
-
-  function nextStep() {
-    markStepComplete({ ended: endedWhy || "manual" });
-
-    if (activeStep < 3) {
-      activeStep = activeStep + 1;
-      // Flip back to start-state on the next step
-      mode = "idle";
-      endedWhy = "";
-      stopElapsedSec = 0;
-      rerender();
-      return;
-    }
-
-    // Plan finished (still no "done")
-    mode = "idle";
-    endedWhy = "";
-    stopElapsedSec = 0;
-    // keep activeStep at 3; user can reset or edit
+    mode = "window_end";
     rerender();
   }
 
   function applyTemplate(t) {
+    // Switching template resets progress (clean mental model)
     state = { ...state, template: t.id, a: t.a, b: t.b, c: t.c, doneStep: 0 };
     saveState(state);
     activeStep = 1;
-    mode = "idle";
     showTemplates = false;
+    mode = "idle";
+    stopTick();
+    running = false;
     rerender();
   }
 
@@ -331,9 +338,10 @@ export function renderTodayPlan() {
     if (t) state = { ...state, template: t.id, a: t.a, b: t.b, c: t.c, doneStep: 0 };
     saveState(state);
     activeStep = 1;
+    showTemplates = false;
     mode = "idle";
-    endedWhy = "";
-    stopElapsedSec = 0;
+    stopTick();
+    running = false;
     rerender();
   }
 
@@ -341,8 +349,8 @@ export function renderTodayPlan() {
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["Today’s Plan"]),
-        el("p", { class: "p" }, ["Three steps only. Do one step at a time."]),
-        el("div", { class: "small" }, [`Build ${BUILD}`]),
+        el("p", { class: "p" }, ["Three steps only. One window at a time."]),
+        String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
         stabilizedToday && state.doneStep < 1 ? el("div", { class: "small" }, ["Stabilized today ✓ (Step 2 available)"]) : null,
       ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
@@ -351,7 +359,7 @@ export function renderTodayPlan() {
     ]);
   }
 
-  function planCardMerged() {
+  function mergedPlanCard() {
     const currentLabel =
       state.template && state.template !== "custom"
         ? getTemplateById(state.template)?.label || "Template"
@@ -365,7 +373,7 @@ export function renderTodayPlan() {
         el("div", { class: "small" }, [label]),
         el("input", {
           value: state[key],
-          placeholder: locked ? "Locked until previous step is complete…" : "Small + concrete… (add “10 min” to auto-set timer)",
+          placeholder: locked ? "Locked…" : "Small + concrete… (add “10 min” to auto-set)",
           disabled: locked ? true : false,
           style:
             "width:100%;padding:12px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);opacity:" +
@@ -381,36 +389,44 @@ export function renderTodayPlan() {
     }
 
     return el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["Plan"]),
+      sectionLabel("Plan"),
       el("p", { class: "small" }, [`Type: ${currentLabel}`]),
       el("div", { class: "btnRow" }, [
-        el("button", {
-          class: "btn",
-          type: "button",
-          onClick: () => { showTemplates = !showTemplates; rerender(); },
-        }, [showTemplates ? "Hide templates" : "Change template"]),
+        el(
+          "button",
+          {
+            class: "btn",
+            type: "button",
+            onClick: () => {
+              showTemplates = !showTemplates;
+              rerender();
+            },
+          },
+          [showTemplates ? "Hide templates" : "Change template"]
+        ),
         el("button", { class: "btn", type: "button", onClick: resetPlan }, ["Reset plan"]),
       ]),
       showTemplates
         ? el("div", { class: "flowShell", style: "margin-top:10px" }, [
-            el("div", { class: "badge" }, ["Templates"]),
-            el("p", { class: "small" }, ["Switching template resets step progress (clean slate)."]),
-            el("div", { class: "btnRow" }, TEMPLATES.map((t) =>
-              el("button", { class: "btn", type: "button", onClick: () => applyTemplate(t) }, [t.label])
-            )),
+            el("p", { class: "small" }, ["Switching template resets step progress."]),
+            el(
+              "div",
+              { class: "btnRow" },
+              TEMPLATES.map((t) =>
+                el("button", { class: "btn", type: "button", onClick: () => applyTemplate(t) }, [t.label])
+              )
+            ),
           ])
         : null,
-
-      el("div", { class: "flowShell", style: "margin-top:12px" }, [
-        stepInput("Step 1", "a", false),
-        stepInput("Step 2", "b", lock2),
-        stepInput("Step 3", "c", lock3),
-        el("p", { class: "small" }, ["Rule: if it doesn’t fit in 3 steps, it’s not for today."]),
-      ]),
+      el("div", { style: "height:10px" }, []),
+      stepInput("Step 1", "a", false),
+      stepInput("Step 2", "b", lock2),
+      stepInput("Step 3", "c", lock3),
+      el("p", { class: "small" }, ["Rule: if it doesn’t fit in 3 steps, it’s not for today."]),
     ].filter(Boolean));
   }
 
-  function actionFlipCard() {
+  function actionCard() {
     const currentText = stepText(activeStep);
     const autoMin = detectMinutes(currentText) ?? 10;
 
@@ -418,73 +434,83 @@ export function renderTodayPlan() {
       el("button", {
         class: `btn ${activeStep === 1 ? "btnPrimary" : ""}`.trim(),
         type: "button",
-        onClick: () => { activeStep = 1; if (!running) { mode = "idle"; rerender(); } },
+        onClick: () => { activeStep = 1; mode = "idle"; rerender(); },
       }, ["Step 1"]),
       el("button", {
         class: `btn ${activeStep === 2 ? "btnPrimary" : ""}`.trim(),
         type: "button",
-        onClick: () => { activeStep = 2; if (!running) { mode = "idle"; rerender(); } },
+        onClick: () => { activeStep = 2; mode = "idle"; rerender(); },
         disabled: canStartStep(2) ? false : true,
       }, ["Step 2"]),
       el("button", {
         class: `btn ${activeStep === 3 ? "btnPrimary" : ""}`.trim(),
         type: "button",
-        onClick: () => { activeStep = 3; if (!running) { mode = "idle"; rerender(); } },
+        onClick: () => { activeStep = 3; mode = "idle"; rerender(); },
         disabled: canStartStep(3) ? false : true,
       }, ["Step 3"]),
     ]);
 
-    // FRONT (start step)
-    if (mode === "idle") {
-      return el("div", { class: "card cardPad" }, [
-        el("div", { class: "badge" }, ["Start"]),
-        stepButtons,
-        el("p", { class: "p", style: "margin-top:8px;font-weight:900;" }, [
-          currentText ? currentText : "Add text to this step above.",
-        ]),
-        currentText
-          ? el("p", { class: "small", style: "margin-top:8px" }, [`Timer: ${autoMin} min (auto)`])
-          : el("p", { class: "small", style: "margin-top:8px" }, ["Timer: 10 min default (add a time to override)."]),
-        el("div", { class: "btnRow" }, [
-          el("button", {
-            class: "btn btnPrimary",
-            type: "button",
-            onClick: startTimerForStep,
-            disabled: !(currentText && canStartStep(activeStep)) || running,
-          }, ["Start Step"]),
-          el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/move") }, ["Move Forward"]),
-        ]),
-      ]);
-    }
-
-    // BACK (active timer)
+    // Card “flips” based on mode (Start -> Active -> Next step)
     if (mode === "running") {
-      const remaining = clamp(endAt - Date.now(), 0, liveDurationMin * 60 * 1000);
       return el("div", { class: "card cardPad" }, [
-        el("div", { class: "badge" }, [`Step ${activeStep} • ${liveDurationMin} min`]),
+        sectionLabel(`Active • Step ${activeStep}`),
         el("div", { class: "timerBox" }, [
-          el("div", { class: "timerReadout", "data-timer-readout": "1" }, [formatMMSS(remaining)]),
-          // No progress bar (keep clean + consistent)
+          el("div", { class: "timerReadout", "data-timer-readout": "1" }, [formatMMSS(remainingMs())]),
+          // progress bars removed (governance consistency)
           el("div", { class: "btnRow" }, [
-            el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop early"]),
+            el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"]),
           ]),
         ]),
       ]);
     }
 
-    // ENDED (next step)
-    const isLast = activeStep >= 3;
-    const line =
-      endedWhy === "early"
-        ? `Worked for ${stopElapsedSec}s.`
-        : "Timer ended.";
+    if (mode === "window_end") {
+      const nextStep = Math.min(3, activeStep + 1);
+      const hasNext = activeStep < 3;
 
+      const line =
+        stopElapsedSec > 0
+          ? `Window closed (${stopElapsedSec}s).`
+          : "Window closed.";
+
+      return el("div", { class: "card cardPad" }, [
+        sectionLabel("Next step"),
+        el("p", { class: "p" }, [line]),
+        el("div", { class: "btnRow" }, [
+          hasNext
+            ? el("button", {
+                class: "btn btnPrimary",
+                type: "button",
+                onClick: () => {
+                  activeStep = nextStep;
+                  mode = "idle";
+                  stopElapsedSec = 0;
+                  rerender();
+                },
+              }, [`Step ${nextStep}`])
+            : el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
+          el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/reflect") }, ["Clarify"]),
+        ]),
+      ]);
+    }
+
+    // idle
     return el("div", { class: "card cardPad" }, [
-      el("div", { class: "badge" }, ["Next"]),
-      el("p", { class: "p" }, [line]),
+      sectionLabel("Start"),
+      stepButtons,
+      el("p", { class: "p", style: "margin-top:8px;font-weight:900;" }, [
+        currentText ? currentText : "Add text to this step above.",
+      ]),
+      currentText
+        ? el("p", { class: "small", style: "margin-top:8px" }, [`Timer: ${autoMin} min (auto)`])
+        : el("p", { class: "small", style: "margin-top:8px" }, ["Timer: 10 min default (add a time to override)."]),
       el("div", { class: "btnRow" }, [
-        el("button", { class: "btn btnPrimary", type: "button", onClick: nextStep }, [isLast ? "Finish plan" : "Next step"]),
-        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/reflect") }, ["Clarify"]),
+        el("button", {
+          class: "btn btnPrimary",
+          type: "button",
+          onClick: startTimerForStep,
+          disabled: !(currentText && canStartStep(activeStep)) || running,
+        }, ["Start Step"]),
       ]),
     ]);
   }
@@ -492,8 +518,8 @@ export function renderTodayPlan() {
   function rerender() {
     wrap.innerHTML = "";
     wrap.appendChild(header());
-    wrap.appendChild(planCardMerged());
-    wrap.appendChild(actionFlipCard());
+    wrap.appendChild(mergedPlanCard());
+    wrap.appendChild(actionCard());
     if (running) updateTimerUI();
   }
 
