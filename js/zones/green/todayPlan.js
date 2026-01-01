@@ -1,10 +1,4 @@
-/*! 
- * Praxis 
- * © 2025 Joseph Satmary. All rights reserved.
- * Public demo does not grant a license to use, copy, modify, or distribute.
- */
-// js/zones/green/todayPlan.js  (FULL REPLACEMENT)
-
+/*!  * Praxis  * © 2025 Joseph Satmary. All rights reserved. * Public demo does not grant a license to use, copy, modify, or distribute. */// js/zones/green/todayPlan.js  (FULL REPLACEMENT)
 import {
   appendLog,
   consumeNextIntent,
@@ -13,7 +7,7 @@ import {
 } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "TP-21";
+const BUILD = "TP-22";
 
 // ✅ Must match Router
 const KEY_PRIMARY = "praxis_today_plan_v5";
@@ -45,7 +39,8 @@ function el(tag, attrs = {}, children = []) {
     if (v === null || v === undefined || v === false) continue;
     if (k === "class") node.className = v;
     else if (k === "html") node.innerHTML = v;
-    else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (k.startsWith("on") && typeof v === "function")
+      node.addEventListener(k.slice(2).toLowerCase(), v);
     else if (v === true) node.setAttribute(k, "");
     else node.setAttribute(k, v);
   }
@@ -170,7 +165,9 @@ function templateDefaultForStep(templateId, stepNum) {
 function canOverwriteBecauseTemplateDefault(state, stepNum) {
   if (!state?.template) return false;
   if (state.template === "custom") return false;
-  const current = stepNum === 1 ? String(state.a || "") : stepNum === 2 ? String(state.b || "") : String(state.c || "");
+
+  const current =
+    stepNum === 1 ? String(state.a || "") : stepNum === 2 ? String(state.b || "") : String(state.c || "");
   const def = templateDefaultForStep(state.template, stepNum);
   return current.trim() && def.trim() && current.trim() === def.trim();
 }
@@ -179,6 +176,7 @@ function canOverwriteBecauseTemplateDefault(state, stepNum) {
  * Auto-fill rule:
  * - Never overwrite user-written text.
  * - DO overwrite template-default text (because it’s scaffold, not the user’s plan).
+ * - NEW (optional): advanceDoneStep can invisibly bump doneStep (no UI marker).
  * - Option B routing: focus Step 2 after Stabilize + Move Forward.
  */
 function prefillFromIntent(state, stabilizedToday, intentObj) {
@@ -192,7 +190,6 @@ function prefillFromIntent(state, stabilizedToday, intentObj) {
   if (text && target) {
     const key = target === 1 ? "a" : target === 2 ? "b" : "c";
     const current = String(state[key] || "").trim();
-
     const overwriteOk = canOverwriteBecauseTemplateDefault(state, target);
 
     if (!current || overwriteOk) {
@@ -203,6 +200,12 @@ function prefillFromIntent(state, stabilizedToday, intentObj) {
         template: state.template && state.template !== "custom" ? "custom" : state.template || "custom",
       };
     }
+  }
+
+  // ✅ NEW: optional invisible “done” bump
+  const adv = Number(payload.advanceDoneStep || 0);
+  if (Number.isFinite(adv) && adv >= 1 && adv <= 3) {
+    state = { ...state, doneStep: Math.max(Number(state.doneStep || 0), adv) };
   }
 
   if (focusStep) return { state, focusStep };
@@ -239,7 +242,6 @@ export function renderTodayPlan() {
       return false;
     }
   })();
-
   const step3CreditToday = hasStep3CreditToday();
 
   // Always template-based by default unless user already has content
@@ -260,7 +262,6 @@ export function renderTodayPlan() {
   // --- intent parsing (string or object) ---
   let intentName = null;
   let intentPayload = null;
-
   if (rawIntent && typeof rawIntent === "object" && rawIntent.intent) {
     intentName = String(rawIntent.intent || "");
     intentPayload = rawIntent.payload || null;
@@ -270,7 +271,10 @@ export function renderTodayPlan() {
 
   // Apply payload-based prefill (if present)
   if (intentName && intentPayload) {
-    const { state: nextState, focusStep } = prefillFromIntent(state, stabilizedToday, { intent: intentName, payload: intentPayload });
+    const { state: nextState, focusStep } = prefillFromIntent(state, stabilizedToday, {
+      intent: intentName,
+      payload: intentPayload,
+    });
     state = nextState;
     saveState(state);
     if (focusStep) activeStep = focusStep;
@@ -336,7 +340,6 @@ export function renderTodayPlan() {
     liveDurationMin = detectMinutes(txt) ?? 10;
 
     grantToken();
-
     running = true;
     mode = "running";
     stopElapsedSec = 0;
@@ -480,17 +483,30 @@ export function renderTodayPlan() {
       sectionLabel("Plan"),
       el("p", { class: "small" }, [`Type: ${currentLabel}`]),
       el("div", { class: "btnRow" }, [
-        el("button", { class: "btn", type: "button", onClick: () => { showTemplates = !showTemplates; rerender(); } }, [
-          showTemplates ? "Hide templates" : "Change template",
-        ]),
+        el(
+          "button",
+          {
+            class: "btn",
+            type: "button",
+            onClick: () => {
+              showTemplates = !showTemplates;
+              rerender();
+            },
+          },
+          [showTemplates ? "Hide templates" : "Change template"]
+        ),
         el("button", { class: "btn", type: "button", onClick: resetPlan }, ["Reset plan"]),
       ]),
       showTemplates
         ? el("div", { class: "flowShell", style: "margin-top:10px" }, [
             el("p", { class: "small" }, ["Switching template resets step progress."]),
-            el("div", { class: "btnRow" }, TEMPLATES.map((t) =>
-              el("button", { class: "btn", type: "button", onClick: () => applyTemplate(t) }, [t.label])
-            )),
+            el(
+              "div",
+              { class: "btnRow" },
+              TEMPLATES.map((t) =>
+                el("button", { class: "btn", type: "button", onClick: () => applyTemplate(t) }, [t.label])
+              )
+            ),
           ])
         : null,
       el("div", { style: "height:10px" }, []),
@@ -506,23 +522,35 @@ export function renderTodayPlan() {
     const autoMin = detectMinutes(currentText) ?? 10;
 
     const stepButtons = el("div", { class: "btnRow" }, [
-      el("button", {
-        class: `btn ${activeStep === 1 ? "btnPrimary" : ""}`.trim(),
-        type: "button",
-        onClick: () => { activeStep = 1; mode = "idle"; rerender(); },
-      }, ["Step 1"]),
-      el("button", {
-        class: `btn ${activeStep === 2 ? "btnPrimary" : ""}`.trim(),
-        type: "button",
-        onClick: () => { activeStep = 2; mode = "idle"; rerender(); },
-        disabled: canStartStep(2) ? false : true,
-      }, ["Step 2"]),
-      el("button", {
-        class: `btn ${activeStep === 3 ? "btnPrimary" : ""}`.trim(),
-        type: "button",
-        onClick: () => { activeStep = 3; mode = "idle"; rerender(); },
-        disabled: canStartStep(3) ? false : true,
-      }, ["Step 3"]),
+      el(
+        "button",
+        {
+          class: `btn ${activeStep === 1 ? "btnPrimary" : ""}`.trim(),
+          type: "button",
+          onClick: () => { activeStep = 1; mode = "idle"; rerender(); },
+        },
+        ["Step 1"]
+      ),
+      el(
+        "button",
+        {
+          class: `btn ${activeStep === 2 ? "btnPrimary" : ""}`.trim(),
+          type: "button",
+          onClick: () => { activeStep = 2; mode = "idle"; rerender(); },
+          disabled: canStartStep(2) ? false : true,
+        },
+        ["Step 2"]
+      ),
+      el(
+        "button",
+        {
+          class: `btn ${activeStep === 3 ? "btnPrimary" : ""}`.trim(),
+          type: "button",
+          onClick: () => { activeStep = 3; mode = "idle"; rerender(); },
+          disabled: canStartStep(3) ? false : true,
+        },
+        ["Step 3"]
+      ),
     ]);
 
     if (mode === "running") {
@@ -547,16 +575,15 @@ export function renderTodayPlan() {
         el("p", { class: "p" }, [line]),
         el("div", { class: "btnRow" }, [
           hasNext
-            ? el("button", {
-                class: "btn btnPrimary",
-                type: "button",
-                onClick: () => {
-                  activeStep = nextStep;
-                  mode = "idle";
-                  stopElapsedSec = 0;
-                  rerender();
+            ? el(
+                "button",
+                {
+                  class: "btn btnPrimary",
+                  type: "button",
+                  onClick: () => { activeStep = nextStep; mode = "idle"; stopElapsedSec = 0; rerender(); },
                 },
-              }, [`Step ${nextStep}`])
+                [`Step ${nextStep}`]
+              )
             : el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
           el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/reflect") }, ["Clarify"]),
         ]),
