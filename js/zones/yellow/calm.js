@@ -2,7 +2,7 @@
 import { appendLog, grantStabilizeCreditToday } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "CALM-7";
+const BUILD = "CALM-8";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -25,6 +25,13 @@ const nowISO = () => new Date().toISOString();
 function safeAppendLog(entry) {
   try {
     appendLog(entry);
+  } catch {}
+}
+
+// Token grant should be idempotent (day-stamp). Best-effort only.
+function grantToken() {
+  try {
+    grantStabilizeCreditToday();
   } catch {}
 }
 
@@ -74,6 +81,9 @@ export function renderCalm() {
     startAt = Date.now();
     endAt = Date.now() + min * 60 * 1000;
 
+    // Starting a timer counts as stabilize for the day (parity).
+    grantToken();
+
     safeAppendLog({ kind: "calm_start", when: nowISO(), minutes: min, build: BUILD });
 
     stopTick();
@@ -83,7 +93,10 @@ export function renderCalm() {
         stopTick();
         running = false;
         mode = "done";
-        // record stabilize credit on completion of window
+
+        // Completion counts as stabilize for the day (parity).
+        grantToken();
+
         safeAppendLog({
           kind: "calm_end",
           when: nowISO(),
@@ -92,6 +105,7 @@ export function renderCalm() {
           elapsedSec: durationMin * 60,
           build: BUILD,
         });
+
         rerender();
       } else {
         updateTimerUI();
@@ -112,6 +126,9 @@ export function renderCalm() {
     stoppedEarly = true;
     elapsedSec = Math.max(0, Math.round(elapsedMs / 1000));
 
+    // Early stop still counts as stabilize for the day (parity).
+    grantToken();
+
     safeAppendLog({
       kind: "calm_stop",
       when: nowISO(),
@@ -121,7 +138,6 @@ export function renderCalm() {
       build: BUILD,
     });
 
-    // Early stop still earns Rest (no penalty, no checkout)
     mode = "stopped";
     rerender();
   }
@@ -131,7 +147,6 @@ export function renderCalm() {
       el("div", {}, [
         el("h1", { class: "h1" }, ["Calm Me Down"]),
         el("p", { class: "p" }, ["Lower intensity first."]),
-        // keep build stamp only if you intentionally view it via ?debug=1
         String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
       ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
@@ -146,7 +161,7 @@ export function renderCalm() {
               location.hash = "#/home";
             },
           },
-          ["Home"]
+          ["Reset"]
         ),
       ]),
     ]);
@@ -170,9 +185,7 @@ export function renderCalm() {
       el("div", { class: "timerBox" }, [
         el("div", { class: "timerReadout", "data-timer-readout": "1" }, [formatMMSS(remainingMs())]),
         // NOTE: progress bars are intentionally removed per GOVERNANCE.md
-        el("div", { class: "btnRow" }, [
-          el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"]),
-        ]),
+        el("div", { class: "btnRow" }, [el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"])]),
       ]),
     ]);
   }
@@ -200,23 +213,18 @@ export function renderCalm() {
   function closureCard() {
     if (mode !== "stopped" && mode !== "done") return null;
 
-    // Primary completion state for Calm is REST.
-    // Closure must: name state -> return agency -> release.
+    // Closure sweep rule:
+    // Only actions: Next step (primary) + Reset (secondary).
     const stateLine = stoppedEarly ? "Stopping here is allowed." : "Nothing else is required of you right now.";
 
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Rest"),
       el("p", { class: "p" }, [stateLine]),
       el("div", { class: "btnRow" }, [
-        el("button", { class: "btn btnPrimary", type: "button", onClick: () => { mode = "idle"; rerender(); } }, [
-          "Run Calm again",
+        el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/green/today") }, [
+          "Next step",
         ]),
-        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Home"]),
-      ]),
-      el("div", { class: "btnRow", style: "margin-top:10px" }, [
-        // Optional readiness doors (never required, never automatic)
-        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/move") }, ["Move Forward"]),
-        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/today") }, ["Today’s Plan"]),
+        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
       ]),
     ]);
   }
