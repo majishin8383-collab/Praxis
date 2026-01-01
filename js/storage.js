@@ -1,5 +1,5 @@
-/*!
- * Praxis
+/*! 
+ * Praxis 
  * © 2025 Joseph Satmary. All rights reserved.
  * Public demo does not grant a license to use, copy, modify, or distribute.
  *
@@ -7,10 +7,8 @@
  */
 
 const KEY_LOG = "praxis_log_v1";
-
 // Stabilize credit (day stamp)
 const KEY_STABILIZE_DAY = "praxis_stabilize_credit_day_v1";
-
 // One-time routing hint between tools (intent handoff)
 const KEY_NEXT_INTENT = "praxis_next_intent_v1";
 
@@ -30,14 +28,12 @@ function localDayStamp() {
 
 function normalizeKind(kind) {
   const k = String(kind || "").trim();
-  // Broad aliasing for older builds / experiments.
   const map = {
     // Stop Urge
     stopUrge: "stop_urge",
     stopUrge_open: "stop_urge_open",
     stopUrge_start: "stop_urge_start",
     stopUrge_stop: "stop_urge_stop",
-
     // Move Forward
     moveForward: "move_forward",
     moveForward_open: "move_forward_open",
@@ -45,12 +41,10 @@ function normalizeKind(kind) {
     moveForward_stop: "move_forward_stop",
     moveForward_extend: "move_forward_extend",
     moveForward_end: "move_forward_end",
-
     // Emergency
     emergency: "emergency_open",
     emergency_open: "emergency_open",
-
-    // A3 back-compat aliases (older “end” kinds behave like the canonical kinds)
+    // Back-compat aliases
     calm_end: "calm",
     stop_urge_end: "stop_urge",
     move_forward_end: "move_forward",
@@ -67,19 +61,17 @@ function shouldGrantStabilizeCredit(entry) {
   const kind = normalizeKind(entry?.kind);
   if (!kind) return false;
 
-  // Canonical completions (existing behavior)
+  // Canonical completions
   if (kind === "calm") return true;
   if (kind === "stop_urge") return true;
   if (kind === "move_forward") return true;
 
-  // Stabilize / Act timers (start/stop/extend/end) should also count.
-  if (kind.startsWith("stop_urge_")) return true; // open/start/stop/extend/etc
-  if (kind.startsWith("move_forward_")) return true; // open/start/stop/extend/end/etc
-
-  // Calm tool may log calm_start/calm_stop in some builds
+  // Timers
+  if (kind.startsWith("stop_urge_")) return true;
+  if (kind.startsWith("move_forward_")) return true;
   if (kind === "calm_start" || kind === "calm_stop") return true;
 
-  // Today’s Plan parity: any step timer interaction counts
+  // Today Plan parity
   if (kind.startsWith("today_plan_step_")) return true;
   if (kind === "today_plan_continue_start") return true;
   if (kind === "today_plan_step") return true;
@@ -102,11 +94,9 @@ export function readLog() {
 export function appendLog(entry) {
   const e = entry && typeof entry === "object" ? { ...entry } : { kind: "unknown" };
 
-  // Normalize / guard
   e.kind = normalizeKind(e.kind);
   if (!e.when) e.when = nowISO();
 
-  // Persist log (cap)
   const log = readLog();
   log.unshift(e);
   try {
@@ -144,28 +134,22 @@ export function clearStabilizeCredit() {
 
 // ---------- intent handoff ----------
 /**
- * Back-compat: setNextIntent("some_intent") still works.
- * New: setNextIntent("some_intent", { ...payload })
+ * Back-compat:
+ * - setNextIntent("today_plan_step2") still works.
+ * - setNextIntent("today_plan_prefill", { ...payload... }) now works.
+ * Storage format: { intent: string, payload?: object, ts: number }
  */
 export function setNextIntent(intent, payload = null) {
   try {
-    localStorage.setItem(
-      KEY_NEXT_INTENT,
-      JSON.stringify({
-        intent: String(intent || ""),
-        payload: payload && typeof payload === "object" ? payload : null,
-        ts: Date.now(),
-      })
-    );
+    const obj = {
+      intent: String(intent || ""),
+      ts: Date.now(),
+    };
+    if (payload && typeof payload === "object") obj.payload = payload;
+    localStorage.setItem(KEY_NEXT_INTENT, JSON.stringify(obj));
   } catch {}
 }
 
-/**
- * Returns:
- * - null
- * - "intent_string"  (older callers)
- * - { intent: "x", payload: {...} }  (new callers)
- */
 export function consumeNextIntent(maxAgeMinutes = 30) {
   try {
     const raw = localStorage.getItem(KEY_NEXT_INTENT);
@@ -175,9 +159,13 @@ export function consumeNextIntent(maxAgeMinutes = 30) {
     localStorage.removeItem(KEY_NEXT_INTENT);
 
     const parsed = JSON.parse(raw);
+
+    // Back-compat: if someone stored a bare string earlier, pass it through
+    if (typeof parsed === "string") return parsed;
+
     const intent = parsed?.intent ? String(parsed.intent) : "";
-    const ts = Number(parsed?.ts || 0);
     const payload = parsed?.payload && typeof parsed.payload === "object" ? parsed.payload : null;
+    const ts = Number(parsed?.ts || 0);
 
     if (!intent) return null;
 
@@ -186,9 +174,8 @@ export function consumeNextIntent(maxAgeMinutes = 30) {
       if (ageMs > maxAgeMinutes * 60 * 1000) return null;
     }
 
-    // Only return object if we actually have payload
-    if (payload) return { intent, payload };
-    return intent;
+    // Return object when payload exists; else return string for back-compat
+    return payload ? { intent, payload } : intent;
   } catch {
     try {
       localStorage.removeItem(KEY_NEXT_INTENT);
