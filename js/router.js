@@ -1,7 +1,4 @@
-/*! 
- * Praxis
- * © 2025 Joseph Satmary. All rights reserved.
- */
+/*! * Praxis * © 2025 Joseph Satmary. All rights reserved. */
 import { setMain } from "./ui.js";
 
 function el(tag, attrs = {}, children = []) {
@@ -10,8 +7,7 @@ function el(tag, attrs = {}, children = []) {
     if (v === null || v === undefined || v === false) continue;
     if (k === "class") node.className = v;
     else if (k === "html") node.innerHTML = v;
-    else if (k.startsWith("on") && typeof v === "function")
-      node.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
     else if (v === true) node.setAttribute(k, "");
     else node.setAttribute(k, v);
   }
@@ -41,9 +37,7 @@ function errorView(err, hash) {
           )
         : null,
       el("div", { class: "btnRow", style: "margin-top:12px" }, [
-        el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, [
-          "Go Home",
-        ]),
+        el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, ["Go Home"]),
         el("button", { class: "btn", type: "button", onClick: () => location.reload() }, ["Reload"]),
       ]),
       el("p", { class: "small", style: "margin-top:10px" }, [
@@ -56,28 +50,11 @@ function errorView(err, hash) {
 function normalizeHash(raw) {
   let h = String(raw || "").trim();
   if (!h) return "#/home";
-
-  // Some browsers/extensions can produce "#/path?x=y"
   const q = h.indexOf("?");
   if (q >= 0) h = h.slice(0, q);
-
   if (h[0] !== "#") return "#/home";
   if (!h.startsWith("#/")) return "#/home";
-
-  // Aliases / redirects (keep minimal, prevent dead routes)
-  const alias = {
-    "#/reset": "#/home",
-    "#/start": "#/home",
-
-    // Redirect deprecated routes to the closest surviving tool
-    "#/green/next": "#/green/today",
-    "#/green/direction": "#/green/today",
-    "#/reflect": "#/home",
-    "#/history": "#/home",
-    "#/onboarding": "#/home",
-    "#/green/focus": "#/home",
-  };
-
+  const alias = { "#/reset": "#/home", "#/start": "#/home" };
   return alias[h] || h;
 }
 
@@ -94,6 +71,9 @@ const routes = new Map([
   // Green (act)
   ["#/green/move", async () => (await import("./zones/green/moveForward.js")).renderMoveForward()],
   ["#/green/today", async () => (await import("./zones/green/todayPlan.js")).renderTodayPlan()],
+
+  // Internal tool (kept)
+  ["#/reflect", async () => (await import("./zones/reflect.js")).renderReflect()],
 ]);
 
 function getHash() {
@@ -103,7 +83,6 @@ function getHash() {
 async function onRouteChange() {
   const hash = getHash();
   const handler = routes.get(hash) || routes.get("#/home");
-
   try {
     const view = await handler();
     setMain(view);
