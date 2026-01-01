@@ -2,7 +2,7 @@
 import { appendLog, setNextIntent } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "CALM-8";
+const BUILD = "CALM-9";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -124,6 +124,22 @@ export function renderCalm() {
     rerender();
   }
 
+  function goNextStep() {
+    // Option B: after Stabilize, Today’s Plan should focus Step 2 (Act)
+    // and prefill Step 1 ONLY if it's empty.
+    const label = `${durationMin}-min Calm`;
+    try {
+      setNextIntent("today_plan_prefill", {
+        from: "calm",
+        targetStep: 1,
+        text: label,
+        templateId: "stability",
+        defaultToStep: 2,
+      });
+    } catch {}
+    location.hash = "#/green/today";
+  }
+
   function header() {
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
@@ -132,7 +148,15 @@ export function renderCalm() {
         String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
       ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
-        el("button", { class: "linkBtn", type: "button", onClick: () => { running = false; stopTick(); location.hash = "#/home"; } }, ["Reset"]),
+        el("button", {
+          class: "linkBtn",
+          type: "button",
+          onClick: () => {
+            running = false;
+            stopTick();
+            location.hash = "#/home";
+          },
+        }, ["Reset"]),
       ]),
     ]);
   }
@@ -173,7 +197,7 @@ export function renderCalm() {
           el("div", { style: "font-weight:900;" }, ["Exhale 6"]),
           el("div", { class: "small" }, ["A longer exhale can soften intensity."]),
         ]),
-        el("div", { style: "padding:10px 0;border-bottom:1px solid var(--line);" }, [
+        el("div", { style: "padding:10px 0;" }, [
           el("div", { style: "font-weight:900;" }, ["Name 3 things you see"]),
           el("div", { class: "small" }, ["Anchor attention outside the story."]),
         ]),
@@ -186,32 +210,20 @@ export function renderCalm() {
 
     const stateLine = stoppedEarly ? "Stopping here is allowed." : "Nothing else is required of you right now.";
 
-    function goTodayPlan() {
-      // Option B: after Stabilize, open Today’s Plan focused on Step 2 (Act),
-      // and prefill Step 1 only if it’s empty.
-      const label = `${durationMin}-min Calm`;
-      try {
-        setNextIntent("today_plan_prefill", {
-          from: "calm",
-          targetStep: 1,
-          text: label,
-          templateId: "stability",
-          defaultToStep: 2,
-        });
-      } catch {}
-      location.hash = "#/green/today";
-    }
-
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Rest"),
       el("p", { class: "p" }, [stateLine]),
       el("div", { class: "btnRow" }, [
-        el("button", { class: "btn btnPrimary", type: "button", onClick: () => { mode = "idle"; rerender(); } }, ["Run Calm again"]),
+        el("button", {
+          class: "btn btnPrimary",
+          type: "button",
+          onClick: () => {
+            mode = "idle";
+            rerender();
+          },
+        }, ["Run Calm again"]),
+        el("button", { class: "btn", type: "button", onClick: goNextStep }, ["Next step"]),
         el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
-      ]),
-      el("div", { class: "btnRow", style: "margin-top:10px" }, [
-        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/move") }, ["Move Forward"]),
-        el("button", { class: "btn", type: "button", onClick: goTodayPlan }, ["Today’s Plan"]),
       ]),
     ]);
   }
