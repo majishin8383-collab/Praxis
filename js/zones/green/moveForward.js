@@ -2,7 +2,7 @@
 import { appendLog, setNextIntent } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "MF-11";
+const BUILD = "MF-12";
 
 // light persistence so "Quick start" feels smart without being complex
 const KEY_LAST = "praxis_move_forward_last_v1";
@@ -25,74 +25,26 @@ function el(tag, attrs = {}, children = []) {
 }
 
 const nowISO = () => new Date().toISOString();
-function safeAppendLog(entry) {
-  try {
-    appendLog(entry);
-  } catch {}
-}
+function safeAppendLog(entry) { try { appendLog(entry); } catch {} }
 
 function sectionLabel(text) {
-  // Avoid "badge" UI to comply with GOVERNANCE.md
   return el("div", { class: "small", style: "opacity:.85;font-weight:800;letter-spacing:.02em;" }, [text]);
 }
 
 function getLastLadder() {
-  try {
-    return localStorage.getItem(KEY_LAST) || "";
-  } catch {
-    return "";
-  }
+  try { return localStorage.getItem(KEY_LAST) || ""; } catch { return ""; }
 }
-
 function setLastLadder(id) {
-  try {
-    localStorage.setItem(KEY_LAST, String(id || ""));
-  } catch {}
+  try { localStorage.setItem(KEY_LAST, String(id || "")); } catch {}
 }
 
 const LADDERS = [
-  {
-    id: "walk",
-    title: "Walk + breathe",
-    desc: "Move your body. Let the mind settle behind you.",
-    minutes: 5,
-    steps: ["Stand up. Shoulders down.", "Walk anywhere (inside is fine).", "In 4 → out 6. Keep moving."],
-  },
-  {
-    id: "micro_task",
-    title: "Micro-task (2 minutes)",
-    desc: "Small motion to restart momentum.",
-    minutes: 2,
-    steps: ["Pick one tiny task.", "Set 2 minutes. Begin.", "When it ends: you can stop."],
-  },
-  {
-    id: "reset_body",
-    title: "Body reset",
-    desc: "Simple reps to change state.",
-    minutes: 5,
-    steps: ["20 slow squats (or chair sits).", "20 wall push-ups (or countertop).", "60s stretch: neck + chest + hips."],
-  },
-  {
-    id: "water_light",
-    title: "Water + light",
-    desc: "Hydrate, brighten, regulate.",
-    minutes: 3,
-    steps: ["Drink a full glass of water.", "Step into brighter light / outside if possible.", "3 slow exhales. Keep eyes soft."],
-  },
-  {
-    id: "clean_3",
-    title: "Clean 3 things",
-    desc: "Small order can reduce noise.",
-    minutes: 5,
-    steps: ["Grab a bag or basket.", "Put away 3 things.", "Wipe one surface for 60 seconds."],
-  },
-  {
-    id: "outside_reset",
-    title: "Outside reset",
-    desc: "Change the scene to change the state.",
-    minutes: 7,
-    steps: ["Put on shoes.", "Walk a short loop.", "Look far away for 10 seconds. Exhale longer."],
-  },
+  { id: "walk", title: "Walk + breathe", desc: "Move your body. Let the mind settle behind you.", minutes: 5, steps: ["Stand up. Shoulders down.", "Walk anywhere (inside is fine).", "In 4 → out 6. Keep moving."] },
+  { id: "micro_task", title: "Micro-task (2 minutes)", desc: "Small motion to restart momentum.", minutes: 2, steps: ["Pick one tiny task.", "Set 2 minutes. Begin.", "When it ends: you can stop."] },
+  { id: "reset_body", title: "Body reset", desc: "Simple reps to change state.", minutes: 5, steps: ["20 slow squats (or chair sits).", "20 wall push-ups (or countertop).", "60s stretch: neck + chest + hips."] },
+  { id: "water_light", title: "Water + light", desc: "Hydrate, brighten, regulate.", minutes: 3, steps: ["Drink a full glass of water.", "Step into brighter light / outside if possible.", "3 slow exhales. Keep eyes soft."] },
+  { id: "clean_3", title: "Clean 3 things", desc: "Small order can reduce noise.", minutes: 5, steps: ["Grab a bag or basket.", "Put away 3 things.", "Wipe one surface for 60 seconds."] },
+  { id: "outside_reset", title: "Outside reset", desc: "Change the scene to change the state.", minutes: 7, steps: ["Put on shoes.", "Walk a short loop.", "Look far away for 10 seconds. Exhale longer."] },
 ];
 
 function findLadder(id) {
@@ -102,10 +54,9 @@ function findLadder(id) {
 export function renderMoveForward() {
   const wrap = el("div", { class: "flowShell" });
 
-  // modes: pick -> selected -> running -> done
+  // modes: pick -> selected -> running -> closed
   let mode = "pick";
 
-  // default selection tries to be “smart” but never forces it
   const last = getLastLadder();
   let selectedLadderId = last && findLadder(last) ? last : LADDERS[0].id;
 
@@ -117,7 +68,6 @@ export function renderMoveForward() {
   let tick = null;
 
   // UI state
-  // Mutually exclusive views (no duplicates)
   let showAllLadders = false;
 
   // bookkeeping
@@ -126,18 +76,24 @@ export function renderMoveForward() {
 
   safeAppendLog({ kind: "move_forward_open", when: nowISO(), build: BUILD });
 
-  function stopTick() {
-    if (tick) clearInterval(tick);
-    tick = null;
-  }
-
-  function remainingMs() {
-    return clamp(endAt - Date.now(), 0, durationMin * 60 * 1000);
-  }
-
+  function stopTick() { if (tick) clearInterval(tick); tick = null; }
+  function remainingMs() { return clamp(endAt - Date.now(), 0, durationMin * 60 * 1000); }
   function updateTimerUI() {
     const readout = wrap.querySelector("[data-timer-readout]");
     if (readout) readout.textContent = formatMMSS(remainingMs());
+  }
+
+  function goTodayWithPrefill(ladder) {
+    const txt = `${ladder.title} (${ladder.minutes} min)`;
+    try {
+      setNextIntent("today_plan_prefill", {
+        from: "move_forward",
+        targetStep: 2,
+        text: txt,
+        defaultToStep: 2, // Option B: don’t jump to Step 3
+      });
+    } catch {}
+    location.hash = "#/green/today";
   }
 
   function selectAndAdvance(id) {
@@ -185,7 +141,7 @@ export function renderMoveForward() {
           build: BUILD,
         });
 
-        mode = "done";
+        mode = "closed";
         rerender();
       } else {
         updateTimerUI();
@@ -216,7 +172,7 @@ export function renderMoveForward() {
       build: BUILD,
     });
 
-    mode = "done";
+    mode = "closed";
     rerender();
   }
 
@@ -236,11 +192,7 @@ export function renderMoveForward() {
   function ladderTile(l, labelOverride = null) {
     return el(
       "button",
-      {
-        class: "actionTile",
-        type: "button",
-        onClick: () => selectAndAdvance(l.id),
-      },
+      { class: "actionTile", type: "button", onClick: () => selectAndAdvance(l.id) },
       [
         el("div", { class: "tileTop" }, [
           el("div", {}, [
@@ -255,10 +207,8 @@ export function renderMoveForward() {
   }
 
   function quickStartCard() {
-    // Curated set only
     const recommended = ["walk", "micro_task", "reset_body"];
     const lastId = getLastLadder();
-    // If last ladder exists and is NOT in the recommended set, show it as a 4th option.
     const showResume = !!lastId && !recommended.includes(lastId);
 
     return el("div", { class: "card cardPad" }, [
@@ -269,19 +219,8 @@ export function renderMoveForward() {
         showResume ? ladderTile(findLadder(lastId), "Resume last ladder") : null,
       ].filter(Boolean)),
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
-        el(
-          "button",
-          {
-            class: "btn",
-            type: "button",
-            onClick: () => {
-              // Switch views (no duplication): Quick Start disappears, All Ladders appears
-              showAllLadders = true;
-              rerender();
-            },
-          },
-          ["More ladders"]
-        ),
+        el("button", { class: "btn", type: "button", onClick: () => { showAllLadders = true; rerender(); } }, ["More ladders"]),
+        el("button", { class: "btn", type: "button", onClick: () => goTodayWithPrefill(findLadder(selectedLadderId)) }, ["Today’s Plan"]),
       ]),
     ]);
   }
@@ -292,18 +231,8 @@ export function renderMoveForward() {
       el("p", { class: "small" }, ["Pick the kind of motion you need."]),
       el("div", { class: "flowShell", style: "margin-top:10px" }, LADDERS.map((l) => ladderTile(l))),
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
-        el(
-          "button",
-          {
-            class: "btn",
-            type: "button",
-            onClick: () => {
-              showAllLadders = false;
-              rerender();
-            },
-          },
-          ["Show fewer ladders"]
-        ),
+        el("button", { class: "btn", type: "button", onClick: () => { showAllLadders = false; rerender(); } }, ["Show fewer ladders"]),
+        el("button", { class: "btn", type: "button", onClick: () => goTodayWithPrefill(findLadder(selectedLadderId)) }, ["Today’s Plan"]),
       ]),
     ]);
   }
@@ -315,27 +244,14 @@ export function renderMoveForward() {
       sectionLabel("Selected"),
       el("h2", { class: "h2" }, [ladder.title]),
       el("p", { class: "p" }, [ladder.desc]),
-      el(
-        "div",
-        { class: "flowShell", style: "margin-top:10px" },
-        ladder.steps.map((s) =>
-          el("div", { style: "padding:10px 0;border-bottom:1px solid var(--line);" }, [el("div", { style: "font-weight:900;" }, [s])])
-        )
-      ),
+      el("div", { class: "flowShell", style: "margin-top:10px" }, ladder.steps.map((s) =>
+        el("div", { style: "padding:10px 0;border-bottom:1px solid var(--line);" }, [
+          el("div", { style: "font-weight:900;" }, [s]),
+        ])
+      )),
       el("div", { class: "btnRow", style: "margin-top:12px" }, [
         el("button", { class: "btn btnPrimary", type: "button", onClick: startSelected }, [`Start • ${ladder.minutes} min`]),
-        el(
-          "button",
-          {
-            class: "btn",
-            type: "button",
-            onClick: () => {
-              mode = "pick";
-              rerender();
-            },
-          },
-          ["Back"]
-        ),
+        el("button", { class: "btn", type: "button", onClick: () => { mode = "pick"; rerender(); } }, ["Back"]),
       ]),
       el("p", { class: "small", style: "margin-top:10px" }, ["Stopping early is allowed."]),
     ]);
@@ -346,7 +262,6 @@ export function renderMoveForward() {
       sectionLabel(`Active • ${durationMin} min`),
       el("div", { class: "timerBox" }, [
         el("div", { class: "timerReadout", "data-timer-readout": "1" }, [formatMMSS(remainingMs())]),
-        // progress bars intentionally removed per GOVERNANCE.md
         el("div", { class: "btnRow" }, [
           el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"]),
         ]),
@@ -355,44 +270,20 @@ export function renderMoveForward() {
   }
 
   function closureCard() {
-    if (mode !== "done") return null;
+    if (mode !== "closed") return null;
 
+    const ladder = findLadder(selectedLadderId);
     const line = stoppedEarly ? `Some motion happened (${elapsedSec}s).` : "The window ended.";
-
-    const nextStepBtn = el(
-      "button",
-      {
-        class: "btn",
-        type: "button",
-        onClick: () => {
-          // Best-effort handoff so Today’s Plan opens ready (Step 2 when appropriate)
-          try {
-            setNextIntent("today_plan_step2");
-          } catch {}
-          location.hash = "#/green/today";
-        },
-      },
-      ["Next step"]
-    );
 
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Readiness"),
       el("p", { class: "p" }, [line]),
       el("div", { class: "btnRow" }, [
-        el(
-          "button",
-          {
-            class: "btn btnPrimary",
-            type: "button",
-            onClick: () => {
-              mode = "pick";
-              rerender();
-            },
-          },
-          ["Choose another ladder"]
-        ),
-        nextStepBtn,
+        el("button", { class: "btn btnPrimary", type: "button", onClick: () => { mode = "pick"; rerender(); } }, ["Choose another ladder"]),
         el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
+      ]),
+      el("div", { class: "btnRow", style: "margin-top:10px" }, [
+        el("button", { class: "btn", type: "button", onClick: () => goTodayWithPrefill(ladder) }, ["Today’s Plan"]),
       ]),
     ]);
   }
@@ -402,11 +293,9 @@ export function renderMoveForward() {
     wrap.appendChild(header());
 
     if (mode === "pick") {
-      // Mutually exclusive views (no duplicates)
       wrap.appendChild(showAllLadders ? allLaddersCard() : quickStartCard());
       return;
     }
-
     if (mode === "selected") wrap.appendChild(selectedCard());
     if (mode === "running") wrap.appendChild(runningCard());
 
