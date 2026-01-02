@@ -1,5 +1,5 @@
 // js/zones/green/moveForward.js (FULL REPLACEMENT)
-import { appendLog, setNextIntent, INTENT_TODAY_PREFILL } from "../../storage.js";
+import { appendLog, setNextIntent, consumeNextIntent } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
 const BUILD = "MF-16";
@@ -18,6 +18,7 @@ function localDayStamp() {
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
+
 function grantStep3CreditToday() {
   try {
     localStorage.setItem(KEY_TP3_CREDIT_DAY, localDayStamp());
@@ -43,15 +44,15 @@ function el(tag, attrs = {}, children = []) {
 }
 
 const nowISO = () => new Date().toISOString();
+
 function safeAppendLog(entry) {
   try {
     appendLog(entry);
   } catch {}
 }
+
 function sectionLabel(text) {
-  return el("div", { class: "small", style: "opacity:.85;font-weight:800;letter-spacing:.02em;" }, [
-    text,
-  ]);
+  return el("div", { class: "small", style: "opacity:.85;font-weight:800;letter-spacing:.02em;" }, [text]);
 }
 
 function getLastLadder() {
@@ -61,6 +62,7 @@ function getLastLadder() {
     return "";
   }
 }
+
 function setLastLadder(id) {
   try {
     localStorage.setItem(KEY_LAST, String(id || ""));
@@ -126,6 +128,7 @@ const LADDERS = [
 function findLadder(id) {
   return LADDERS.find((x) => x.id === id) || LADDERS[0];
 }
+
 function ladderPlanText(ladder) {
   return `${ladder.title} (${ladder.minutes} min)`;
 }
@@ -136,8 +139,31 @@ export function renderMoveForward() {
   // modes: pick -> selected -> running -> closed
   let mode = "pick";
 
+  // Optional "picker mode" from Today Plan
+  // payload: { tpStep: 2 } or { tpStep: 3 }
+  let pickerTpStep = 0;
+  try {
+    const raw = consumeNextIntent();
+    if (raw && typeof raw === "object" && raw.intent === "move_forward_pick" && raw.payload) {
+      const n = Number(raw.payload.tpStep);
+      if (n === 2 || n === 3) pickerTpStep = n;
+    }
+  } catch {}
+
+  // In picker mode, filter ladder list
+  function filteredLadders() {
+    if (pickerTpStep === 2 || pickerTpStep === 3) {
+      return LADDERS.filter((l) => l.tpStep === pickerTpStep);
+    }
+    return LADDERS.slice();
+  }
+
+  // Selection defaults: respect picker filter
   const last = getLastLadder();
-  let selectedLadderId = last && findLadder(last) ? last : LADDERS[0].id;
+  const listForDefault = filteredLadders();
+  const lastObj = last ? LADDERS.find((l) => l.id === last) : null;
+  const lastMatchesFilter = !!(lastObj && (!pickerTpStep || lastObj.tpStep === pickerTpStep));
+  let selectedLadderId = lastMatchesFilter ? last : (listForDefault[0]?.id || LADDERS[0].id);
 
   // timer state
   let running = false;
@@ -147,61 +173,75 @@ export function renderMoveForward() {
   let tick = null;
 
   // UI state
-  let showAllLadders = false;
+  let showAllLadders = !!pickerTpStep; // picker mode shows more by default
 
   // bookkeeping
   let stoppedEarly = false;
   let elapsedSec = 0;
 
-  safeAppendLog({ kind: "move_forward_open", when: nowISO(), build: BUILD });
+  safeAppendLog({ kind: "move_forward_open", when: nowISO(), build: BUILD, pickerTpStep: pickerTpStep || null });
 
   function stopTick() {
     if (tick) clearInterval(tick);
     tick = null;
   }
+
   function remainingMs() {
     return clamp(endAt - Date.now(), 0, durationMin * 60 * 1000);
   }
+
   function updateTimerUI() {
     const readout = wrap.querySelector("[data-timer-readout]");
     if (readout) readout.textContent = formatMMSS(remainingMs());
   }
 
+  /**
+   * Prefill rule:
+   * - Act ladders => fill Step 2, focus Step 2
+   * - Move ladders => fill Step 3, focus Step 3
+   * Today Plan forces overwrite (TP-23).
+   */
   function goTodayWithPrefill(ladder, { advanceDone = false } = {}) {
     const step = ladder.tpStep === 3 ? 3 : 2;
     const txt = ladderPlanText(ladder);
-
-    // HARD RULE: Always overwrite correct step when coming from Move Forward
     try {
-      setNextIntent(INTENT_TODAY_PREFILL, {
+      setNextIntent("today_plan_prefill", {
         from: "move_forward",
         targetStep: step,
         text: txt,
         focusStep: step,
-        force: true, // TodayPlan honors this (see TP-22)
         advanceDoneStep: advanceDone ? step : 0,
       });
     } catch {}
-
     location.hash = "#/green/today";
   }
 
+  // ✅ In picker mode, selecting a ladder should immediately overwrite & return to Today Plan.
   function selectAndAdvance(id) {
     selectedLadderId = id;
     setLastLadder(id);
-    durationMin = findLadder(id).minutes;
+    const ladder = findLadder(id);
+    durationMin = ladder.minutes;
+
+    if (pickerTpStep === 2 || pickerTpStep === 3) {
+      // pick-only flow: no timer, no selected screen
+      goTodayWithPrefill(ladder, { advanceDone: false });
+      return;
+    }
+
     mode = "selected";
     rerender();
   }
 
   function maybeGrantStep3Credit(ladder) {
-    // Only “Move” ladders unlock Step 3
+    // Only “Move” ladders should unlock Step 3
     if (ladder.tpStep === 3) grantStep3CreditToday();
   }
 
   function startSelected() {
     const ladder = findLadder(selectedLadderId);
 
+    // If they start a “Move” ladder, unlock Step 3 in Today Plan
     maybeGrantStep3Credit(ladder);
 
     running = true;
@@ -228,6 +268,7 @@ export function renderMoveForward() {
         stopTick();
         running = false;
 
+        // reinforce credit on completion
         maybeGrantStep3Credit(ladder);
 
         safeAppendLog({
@@ -262,6 +303,7 @@ export function renderMoveForward() {
     stoppedEarly = true;
     elapsedSec = Math.max(0, Math.round(elapsedMs / 1000));
 
+    // reinforce credit even on early stop
     maybeGrantStep3Credit(ladder);
 
     safeAppendLog({
@@ -280,10 +322,17 @@ export function renderMoveForward() {
   }
 
   function header() {
+    const sub =
+      pickerTpStep === 2
+        ? "Pick an Act ladder for Today’s Plan Step 2."
+        : pickerTpStep === 3
+        ? "Pick a Move ladder for Today’s Plan Step 3."
+        : "A small motion can change state.";
+
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["Move Forward"]),
-        el("p", { class: "p" }, ["A small motion can change state."]),
+        el("p", { class: "p" }, [sub]),
         String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
       ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
@@ -310,16 +359,26 @@ export function renderMoveForward() {
     );
   }
 
+  function quickStartIds() {
+    // Quick starts adapt based on picker mode
+    if (pickerTpStep === 2) return ["micro_task", "water_light", "clean_3"];
+    if (pickerTpStep === 3) return ["walk", "reset_body", "outside_reset"];
+    return ["walk", "micro_task", "reset_body"];
+  }
+
   function quickStartCard() {
-    const recommended = ["walk", "micro_task", "reset_body"];
+    const recommended = quickStartIds();
+    const list = filteredLadders();
+    const allowedIds = new Set(list.map((l) => l.id));
+
     const lastId = getLastLadder();
-    const showResume = !!lastId && !recommended.includes(lastId);
+    const showResume = !!lastId && !recommended.includes(lastId) && allowedIds.has(lastId);
 
     return el("div", { class: "card cardPad" }, [
-      sectionLabel("Quick start"),
+      sectionLabel(pickerTpStep ? "Pick one" : "Quick start"),
       el("p", { class: "small" }, ["Pick one. A short timer will hold it."]),
       el("div", { class: "flowShell", style: "margin-top:10px" }, [
-        ...recommended.map((id) => ladderTile(findLadder(id))),
+        ...recommended.filter((id) => allowedIds.has(id)).map((id) => ladderTile(findLadder(id))),
         showResume ? ladderTile(findLadder(lastId), "Resume last ladder") : null,
       ].filter(Boolean)),
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
@@ -330,10 +389,11 @@ export function renderMoveForward() {
   }
 
   function allLaddersCard() {
+    const list = filteredLadders();
     return el("div", { class: "card cardPad" }, [
-      sectionLabel("All ladders"),
-      el("p", { class: "small" }, ["Pick the kind of motion you need."]),
-      el("div", { class: "flowShell", style: "margin-top:10px" }, LADDERS.map((l) => ladderTile(l))),
+      sectionLabel(pickerTpStep ? "Choose a ladder" : "All ladders"),
+      el("p", { class: "small" }, [pickerTpStep ? "Pick the right kind of motion." : "Pick the kind of motion you need."]),
+      el("div", { class: "flowShell", style: "margin-top:10px" }, list.map((l) => ladderTile(l))),
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
         el("button", { class: "btn", type: "button", onClick: () => { showAllLadders = false; rerender(); } }, ["Show fewer ladders"]),
         el("button", { class: "btn", type: "button", onClick: () => goTodayWithPrefill(findLadder(selectedLadderId)) }, ["Today’s Plan"]),
@@ -344,7 +404,6 @@ export function renderMoveForward() {
   function selectedCard() {
     const ladder = findLadder(selectedLadderId);
     const tag = ladder.tpStep === 3 ? "Move" : "Act";
-
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Selected"),
       el("h2", { class: "h2" }, [ladder.title]),
@@ -376,14 +435,13 @@ export function renderMoveForward() {
 
   function closureCard() {
     if (mode !== "closed") return null;
-
     const ladder = findLadder(selectedLadderId);
     const line = stoppedEarly ? `Window closed (${elapsedSec}s).` : "Window closed.";
-
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Next step"),
       el("p", { class: "p" }, [line]),
       el("div", { class: "btnRow" }, [
+        // ✅ Ladder always pushes forward: overwrite correct step + mark it done on open
         el("button", { class: "btn btnPrimary", type: "button", onClick: () => goTodayWithPrefill(ladder, { advanceDone: true }) }, ["Today’s Plan"]),
         el("button", { class: "btn", type: "button", onClick: () => { mode = "pick"; rerender(); } }, ["Run again"]),
       ]),
@@ -393,17 +451,14 @@ export function renderMoveForward() {
   function rerender() {
     wrap.innerHTML = "";
     wrap.appendChild(header());
-
     if (mode === "pick") {
       wrap.appendChild(showAllLadders ? allLaddersCard() : quickStartCard());
       return;
     }
     if (mode === "selected") wrap.appendChild(selectedCard());
     if (mode === "running") wrap.appendChild(runningCard());
-
     const c = closureCard();
     if (c) wrap.appendChild(c);
-
     if (running) updateTimerUI();
   }
 
