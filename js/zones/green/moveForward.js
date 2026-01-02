@@ -31,8 +31,7 @@ function el(tag, attrs = {}, children = []) {
     if (v === null || v === undefined || v === false) continue;
     if (k === "class") node.className = v;
     else if (k === "html") node.innerHTML = v;
-    else if (k.startsWith("on") && typeof v === "function")
-      node.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2).toLowerCase(), v);
     else if (v === true) node.setAttribute(k, "");
     else node.setAttribute(k, v);
   }
@@ -125,6 +124,9 @@ const LADDERS = [
   },
 ];
 
+const ACT_PICKS = ["micro_task", "water_light", "clean_3"];
+const MOVE_PICKS = ["walk", "reset_body", "outside_reset"];
+
 function findLadder(id) {
   return LADDERS.find((x) => x.id === id) || LADDERS[0];
 }
@@ -150,17 +152,17 @@ export function renderMoveForward() {
     }
   } catch {}
 
-  function filteredLadders() {
-    if (pickerTpStep === 2 || pickerTpStep === 3) return LADDERS.filter((l) => l.tpStep === pickerTpStep);
-    return LADDERS.slice();
-  }
-
-  // Selection defaults: respect picker filter
+  // Default selection: last ladder if valid, else first of requested set, else first overall.
   const last = getLastLadder();
-  const listForDefault = filteredLadders();
   const lastObj = last ? LADDERS.find((l) => l.id === last) : null;
   const lastMatchesFilter = !!(lastObj && (!pickerTpStep || lastObj.tpStep === pickerTpStep));
-  let selectedLadderId = lastMatchesFilter ? last : (listForDefault[0]?.id || LADDERS[0].id);
+  let selectedLadderId = lastMatchesFilter
+    ? last
+    : pickerTpStep === 2
+    ? ACT_PICKS[0]
+    : pickerTpStep === 3
+    ? MOVE_PICKS[0]
+    : ACT_PICKS[0];
 
   // timer state
   let running = false;
@@ -169,8 +171,8 @@ export function renderMoveForward() {
   let endAt = 0;
   let tick = null;
 
-  // UI state
-  let showAllLadders = !!pickerTpStep; // picker mode shows more by default
+  // UI state (normal landing only)
+  let showMovePicks = true; // you said you like the expanded view as current landing
 
   // bookkeeping
   let stoppedEarly = false;
@@ -196,7 +198,7 @@ export function renderMoveForward() {
    * Prefill rule:
    * - Act ladders => fill Step 2, focus Step 2
    * - Move ladders => fill Step 3, focus Step 3
-   * Today Plan forces overwrite (TP-23).
+   * Always overwrite in Today Plan (TP-23).
    */
   function goTodayWithPrefill(ladder, { advanceDone = false } = {}) {
     const step = ladder.tpStep === 3 ? 3 : 2;
@@ -213,15 +215,14 @@ export function renderMoveForward() {
     location.hash = "#/green/today";
   }
 
-  // ✅ In picker mode, selecting a ladder should immediately overwrite & return to Today Plan.
+  // ✅ Picker mode should immediately overwrite & return to Today Plan.
   function selectAndAdvance(id) {
     selectedLadderId = id;
     setLastLadder(id);
-    const ladder = findLadder(id);
-    durationMin = ladder.minutes;
+    durationMin = findLadder(id).minutes;
 
     if (pickerTpStep === 2 || pickerTpStep === 3) {
-      goTodayWithPrefill(ladder, { advanceDone: false });
+      goTodayWithPrefill(findLadder(id), { advanceDone: false });
       return;
     }
 
@@ -323,7 +324,7 @@ export function renderMoveForward() {
         ? "Pick an Act ladder for Today’s Plan Step 2."
         : pickerTpStep === 3
         ? "Pick a Move ladder for Today’s Plan Step 3."
-        : "Pick Act or Move. Let the timer hold it.";
+        : "Act first. Move if needed.";
 
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
@@ -355,80 +356,43 @@ export function renderMoveForward() {
     );
   }
 
-  // Distinct normal-mode picks (matches Today Plan Act/Move feel)
-  const PICKS_ACT = ["micro_task", "water_light", "clean_3"];
-  const PICKS_MOVE = ["walk", "reset_body", "outside_reset"];
-
-  // Picker-mode quick pick (respects filter)
-  function filteredQuickPickIds() {
-    if (pickerTpStep === 2) return PICKS_ACT.slice();
-    if (pickerTpStep === 3) return PICKS_MOVE.slice();
-    return ["walk", "micro_task", "reset_body"];
-  }
-
-  function filteredQuickPickCard() {
-    const recommended = filteredQuickPickIds();
-    const list = filteredLadders();
-    const allowedIds = new Set(list.map((l) => l.id));
-
-    const lastId = getLastLadder();
-    const showResume = !!lastId && !recommended.includes(lastId) && allowedIds.has(lastId);
-
+  function pickerCard() {
+    const list = pickerTpStep === 2 ? ACT_PICKS : MOVE_PICKS;
+    const title = pickerTpStep === 2 ? "Act ladders" : "Move ladders";
+    const desc = pickerTpStep === 2 ? "Choose an Act ladder to overwrite Step 2." : "Choose a Move ladder to overwrite Step 3.";
     return el("div", { class: "card cardPad" }, [
-      sectionLabel("Pick one"),
-      el("p", { class: "small" }, ["Pick one. Then you’ll return to Today’s Plan."]),
-      el("div", { class: "flowShell", style: "margin-top:10px" }, [
-        ...recommended.filter((id) => allowedIds.has(id)).map((id) => ladderTile(findLadder(id))),
-        showResume ? ladderTile(findLadder(lastId), "Resume last ladder") : null,
-      ].filter(Boolean)),
+      sectionLabel(title),
+      el("p", { class: "small" }, [desc]),
+      el("div", { class: "flowShell", style: "margin-top:10px" }, list.map((id) => ladderTile(findLadder(id)))),
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
-        el("button", { class: "btn", type: "button", onClick: () => { showAllLadders = true; rerender(); } }, ["More ladders"]),
-        el("button", { class: "btn", type: "button", onClick: () => goTodayWithPrefill(findLadder(selectedLadderId)) }, ["Today’s Plan"]),
+        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/today") }, ["Back to Today’s Plan"]),
       ]),
     ]);
   }
 
-  function allLaddersCard() {
-    const list = filteredLadders();
+  function landingCard() {
     return el("div", { class: "card cardPad" }, [
-      sectionLabel(pickerTpStep ? "Choose a ladder" : "All ladders"),
-      el("p", { class: "small" }, [pickerTpStep ? "Pick the right kind of motion." : "Pick the kind of motion you need."]),
-      el("div", { class: "flowShell", style: "margin-top:10px" }, list.map((l) => ladderTile(l))),
-      el("div", { class: "btnRow", style: "margin-top:10px" }, [
-        el("button", { class: "btn", type: "button", onClick: () => { showAllLadders = false; rerender(); } }, ["Show fewer ladders"]),
-        el("button", { class: "btn", type: "button", onClick: () => goTodayWithPrefill(findLadder(selectedLadderId)) }, ["Today’s Plan"]),
-      ]),
-    ]);
-  }
-
-  // ✅ Collapsed normal-mode card (Act + Move), expandable via "More ladders"
-  function collapsedNormalCard() {
-    return el("div", { class: "card cardPad" }, [
-      sectionLabel("Pick a ladder"),
-      el("p", { class: "small" }, ["Act = small task. Move = body reset."]),
-      el("div", { style: "height:8px" }, []),
-
       sectionLabel("Act"),
-      el("div", { class: "flowShell", style: "margin-top:10px" }, PICKS_ACT.map((id) => ladderTile(findLadder(id)))),
+      el("p", { class: "small" }, ["Start with a small action."]),
+      el("div", { class: "flowShell", style: "margin-top:10px" }, ACT_PICKS.map((id) => ladderTile(findLadder(id)))),
 
-      el("div", { style: "height:12px" }, []),
-
-      sectionLabel("Move"),
-      el("div", { class: "flowShell", style: "margin-top:10px" }, PICKS_MOVE.map((id) => ladderTile(findLadder(id)))),
-
-      el("div", { class: "btnRow", style: "margin-top:12px" }, [
-        el("button", { class: "btn", type: "button", onClick: () => { showAllLadders = true; rerender(); } }, ["More ladders"]),
+      el("div", { class: "btnRow", style: "margin-top:10px" }, [
+        el(
+          "button",
+          { class: showMovePicks ? "btn btnPrimary" : "btn", type: "button", onClick: () => { showMovePicks = !showMovePicks; rerender(); } },
+          [showMovePicks ? "Hide Move" : "Move"]
+        ),
         el("button", { class: "btn", type: "button", onClick: () => goTodayWithPrefill(findLadder(selectedLadderId)) }, ["Today’s Plan"]),
       ]),
-    ]);
-  }
 
-  // ✅ Unified pick UI: picker mode stays as-is; normal mode now collapses/expands correctly.
-  function pickScreen() {
-    if (pickerTpStep === 2 || pickerTpStep === 3) {
-      return showAllLadders ? allLaddersCard() : filteredQuickPickCard();
-    }
-    return showAllLadders ? allLaddersCard() : collapsedNormalCard();
+      showMovePicks
+        ? el("div", { style: "margin-top:14px" }, [
+            sectionLabel("Move"),
+            el("p", { class: "small" }, ["Then use your body to shift state."]),
+            el("div", { class: "flowShell", style: "margin-top:10px" }, MOVE_PICKS.map((id) => ladderTile(findLadder(id)))),
+          ])
+        : null,
+    ].filter(Boolean));
   }
 
   function selectedCard() {
@@ -482,7 +446,7 @@ export function renderMoveForward() {
     wrap.appendChild(header());
 
     if (mode === "pick") {
-      wrap.appendChild(pickScreen());
+      wrap.appendChild(pickerTpStep ? pickerCard() : landingCard());
       return;
     }
 
