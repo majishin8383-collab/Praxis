@@ -2,7 +2,7 @@
 import { appendLog, setNextIntent, consumeNextIntent } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "MF-17";
+const BUILD = "MF-18";
 
 // light persistence so "Quick start" feels smart without being complex
 const KEY_LAST = "praxis_move_forward_last_v1";
@@ -355,35 +355,9 @@ export function renderMoveForward() {
     );
   }
 
-  // ✅ Distinct normal-mode picks (matches Today Plan Act/Move feel)
+  // Distinct normal-mode picks (matches Today Plan Act/Move feel)
   const PICKS_ACT = ["micro_task", "water_light", "clean_3"];
   const PICKS_MOVE = ["walk", "reset_body", "outside_reset"];
-
-  function pickSectionCard() {
-    // In picker mode, keep current behavior (filtered list + quick picks)
-    if (pickerTpStep === 2 || pickerTpStep === 3) {
-      return showAllLadders ? allLaddersCard() : filteredQuickPickCard();
-    }
-    // Normal mode: show Act + Move as distinct groups (3 + 3)
-    return el("div", { class: "card cardPad" }, [
-      sectionLabel("Pick a ladder"),
-      el("p", { class: "small" }, ["Act = small task. Move = body reset."]),
-      el("div", { style: "height:8px" }, []),
-
-      sectionLabel("Act"),
-      el("div", { class: "flowShell", style: "margin-top:10px" }, PICKS_ACT.map((id) => ladderTile(findLadder(id)))),
-
-      el("div", { style: "height:12px" }, []),
-
-      sectionLabel("Move"),
-      el("div", { class: "flowShell", style: "margin-top:10px" }, PICKS_MOVE.map((id) => ladderTile(findLadder(id)))),
-
-      el("div", { class: "btnRow", style: "margin-top:12px" }, [
-        el("button", { class: "btn", type: "button", onClick: () => { showAllLadders = true; rerender(); } }, ["More ladders"]),
-        el("button", { class: "btn", type: "button", onClick: () => goTodayWithPrefill(findLadder(selectedLadderId)) }, ["Today’s Plan"]),
-      ]),
-    ]);
-  }
 
   // Picker-mode quick pick (respects filter)
   function filteredQuickPickIds() {
@@ -425,6 +399,36 @@ export function renderMoveForward() {
         el("button", { class: "btn", type: "button", onClick: () => goTodayWithPrefill(findLadder(selectedLadderId)) }, ["Today’s Plan"]),
       ]),
     ]);
+  }
+
+  // ✅ Collapsed normal-mode card (Act + Move), expandable via "More ladders"
+  function collapsedNormalCard() {
+    return el("div", { class: "card cardPad" }, [
+      sectionLabel("Pick a ladder"),
+      el("p", { class: "small" }, ["Act = small task. Move = body reset."]),
+      el("div", { style: "height:8px" }, []),
+
+      sectionLabel("Act"),
+      el("div", { class: "flowShell", style: "margin-top:10px" }, PICKS_ACT.map((id) => ladderTile(findLadder(id)))),
+
+      el("div", { style: "height:12px" }, []),
+
+      sectionLabel("Move"),
+      el("div", { class: "flowShell", style: "margin-top:10px" }, PICKS_MOVE.map((id) => ladderTile(findLadder(id)))),
+
+      el("div", { class: "btnRow", style: "margin-top:12px" }, [
+        el("button", { class: "btn", type: "button", onClick: () => { showAllLadders = true; rerender(); } }, ["More ladders"]),
+        el("button", { class: "btn", type: "button", onClick: () => goTodayWithPrefill(findLadder(selectedLadderId)) }, ["Today’s Plan"]),
+      ]),
+    ]);
+  }
+
+  // ✅ Unified pick UI: picker mode stays as-is; normal mode now collapses/expands correctly.
+  function pickScreen() {
+    if (pickerTpStep === 2 || pickerTpStep === 3) {
+      return showAllLadders ? allLaddersCard() : filteredQuickPickCard();
+    }
+    return showAllLadders ? allLaddersCard() : collapsedNormalCard();
   }
 
   function selectedCard() {
@@ -478,7 +482,7 @@ export function renderMoveForward() {
     wrap.appendChild(header());
 
     if (mode === "pick") {
-      wrap.appendChild(pickSectionCard());
+      wrap.appendChild(pickScreen());
       return;
     }
 
