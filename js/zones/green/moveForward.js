@@ -44,6 +44,7 @@ function el(tag, attrs = {}, children = []) {
 }
 
 const nowISO = () => new Date().toISOString();
+
 function safeAppendLog(entry) {
   try {
     appendLog(entry);
@@ -142,8 +143,10 @@ export function renderMoveForward() {
   // modes: pick -> selected -> running -> closed
   let mode = "pick";
 
+  // ✅ PATCH 1: validate last ladder ID properly
   const last = getLastLadder();
-  let selectedLadderId = last && findLadder(last) ? last : LADDERS[0].id;
+  const lastIsValid = !!last && LADDERS.some((l) => l.id === last);
+  let selectedLadderId = lastIsValid ? last : LADDERS[0].id;
 
   // timer state
   let running = false;
@@ -158,6 +161,9 @@ export function renderMoveForward() {
   // bookkeeping
   let stoppedEarly = false;
   let elapsedSec = 0;
+
+  // ✅ PATCH 2: track the ladder that actually ran
+  let ranLadderId = null;
 
   safeAppendLog({ kind: "move_forward_open", when: nowISO(), build: BUILD });
 
@@ -185,18 +191,16 @@ export function renderMoveForward() {
   function goTodayWithPrefill(ladder, { advanceDone = false } = {}) {
     const step = ladder.tpStep === 3 ? 3 : 2;
     const txt = ladderPlanText(ladder);
-
     try {
       setNextIntent("today_plan_prefill", {
         from: "move_forward",
         targetStep: step,
         text: txt,
         focusStep: step,
-        // Optional: mark step done (Today Plan must support this; TP-22 below does)
+        // Optional: mark step done (Today Plan must support this)
         advanceDoneStep: advanceDone ? step : 0,
       });
     } catch {}
-
     location.hash = "#/green/today";
   }
 
@@ -215,6 +219,9 @@ export function renderMoveForward() {
 
   function startSelected() {
     const ladder = findLadder(selectedLadderId);
+
+    // ✅ PATCH 2a: record what actually ran
+    ranLadderId = ladder.id;
 
     // If they start a “Move” ladder, unlock Step 3 in Today Plan
     maybeGrantStep3Credit(ladder);
@@ -272,7 +279,8 @@ export function renderMoveForward() {
     const now = Date.now();
     const elapsedMs = startAt ? clamp(now - startAt, 0, durationMin * 60 * 1000) : 0;
 
-    const ladder = findLadder(selectedLadderId);
+    // ✅ PATCH 2b: use the ladder that actually ran (not current selection)
+    const ladder = ranLadderId ? findLadder(ranLadderId) : findLadder(selectedLadderId);
 
     stopTick();
     running = false;
@@ -285,7 +293,7 @@ export function renderMoveForward() {
     safeAppendLog({
       kind: "move_forward_stop",
       when: nowISO(),
-      ladderId: selectedLadderId,
+      ladderId: ladder.id,
       minutesPlanned: durationMin,
       stoppedEarly: true,
       elapsedSec,
@@ -302,7 +310,9 @@ export function renderMoveForward() {
       el("div", {}, [
         el("h1", { class: "h1" }, ["Move Forward"]),
         el("p", { class: "p" }, ["A small motion can change state."]),
-        String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
+        String(location.search || "").includes("debug=1")
+          ? el("div", { class: "small" }, [`Build ${BUILD}`])
+          : null,
       ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
         el("button", { class: "linkBtn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
@@ -331,7 +341,8 @@ export function renderMoveForward() {
   function quickStartCard() {
     const recommended = ["walk", "micro_task", "reset_body"];
     const lastId = getLastLadder();
-    const showResume = !!lastId && !recommended.includes(lastId);
+    // ✅ PATCH 1a: show resume only if valid
+    const showResume = !!lastId && LADDERS.some((l) => l.id === lastId) && !recommended.includes(lastId);
 
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Quick start"),
@@ -341,9 +352,20 @@ export function renderMoveForward() {
         showResume ? ladderTile(findLadder(lastId), "Resume last ladder") : null,
       ].filter(Boolean)),
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
-        el("button", { class: "btn", type: "button", onClick: () => { showAllLadders = true; rerender(); } }, ["More ladders"]),
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => {
+            showAllLadders = true;
+            rerender();
+          },
+        }, ["More ladders"]),
         // Prefill based on last/remembered selection
-        el("button", { class: "btn", type: "button", onClick: () => goTodayWithPrefill(findLadder(selectedLadderId)) }, ["Today’s Plan"]),
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => goTodayWithPrefill(findLadder(selectedLadderId)),
+        }, ["Today’s Plan"]),
       ]),
     ]);
   }
@@ -354,8 +376,19 @@ export function renderMoveForward() {
       el("p", { class: "small" }, ["Pick the kind of motion you need."]),
       el("div", { class: "flowShell", style: "margin-top:10px" }, LADDERS.map((l) => ladderTile(l))),
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
-        el("button", { class: "btn", type: "button", onClick: () => { showAllLadders = false; rerender(); } }, ["Show fewer ladders"]),
-        el("button", { class: "btn", type: "button", onClick: () => goTodayWithPrefill(findLadder(selectedLadderId)) }, ["Today’s Plan"]),
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => {
+            showAllLadders = false;
+            rerender();
+          },
+        }, ["Show fewer ladders"]),
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => goTodayWithPrefill(findLadder(selectedLadderId)),
+        }, ["Today’s Plan"]),
       ]),
     ]);
   }
@@ -363,7 +396,6 @@ export function renderMoveForward() {
   function selectedCard() {
     const ladder = findLadder(selectedLadderId);
     const tag = ladder.tpStep === 3 ? "Move" : "Act";
-
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Selected"),
       el("h2", { class: "h2" }, [ladder.title]),
@@ -396,16 +428,22 @@ export function renderMoveForward() {
   function closureCard() {
     if (mode !== "closed") return null;
 
-    const ladder = findLadder(selectedLadderId);
+    // ✅ PATCH 2c: use what actually ran
+    const ladder = ranLadderId ? findLadder(ranLadderId) : findLadder(selectedLadderId);
     const line = stoppedEarly ? `Window closed (${elapsedSec}s).` : "Window closed.";
+
+    // ✅ PATCH 3: only auto-advance on completion (not early stop)
+    const advanceDone = !stoppedEarly;
 
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Next step"),
       el("p", { class: "p" }, [line]),
       el("div", { class: "btnRow" }, [
-        // Prefill the correct step based on what actually ran
-        // Optional: mark that step as done on open
-        el("button", { class: "btn btnPrimary", type: "button", onClick: () => goTodayWithPrefill(ladder, { advanceDone: true }) }, ["Today’s Plan"]),
+        el("button", {
+          class: "btn btnPrimary",
+          type: "button",
+          onClick: () => goTodayWithPrefill(ladder, { advanceDone }),
+        }, ["Today’s Plan"]),
         el("button", { class: "btn", type: "button", onClick: () => { mode = "pick"; rerender(); } }, ["Run again"]),
       ]),
     ]);
@@ -421,8 +459,10 @@ export function renderMoveForward() {
     }
     if (mode === "selected") wrap.appendChild(selectedCard());
     if (mode === "running") wrap.appendChild(runningCard());
+
     const c = closureCard();
     if (c) wrap.appendChild(c);
+
     if (running) updateTimerUI();
   }
 
