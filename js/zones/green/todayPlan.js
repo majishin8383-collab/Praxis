@@ -4,16 +4,17 @@
  * Public demo does not grant a license to use, copy, modify, or distribute.
  */
 
-// js/zones/green/todayPlan.js  (FULL REPLACEMENT)
+// js/zones/green/todayPlan.js (FULL REPLACEMENT)
 import {
   appendLog,
   consumeNextIntent,
   hasStabilizeCreditToday,
   grantStabilizeCreditToday,
+  setNextIntent,
 } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "TP-22";
+const BUILD = "TP-23";
 
 // ✅ Must match Router
 const KEY_PRIMARY = "praxis_today_plan_v5";
@@ -72,33 +73,8 @@ function grantToken() {
   } catch {}
 }
 
-function normalizeState(s) {
-  const doneStep = Number(s?.doneStep);
-  return {
-    template: s?.template || "locked", // free-tier: locked plan
-    a: s?.a || "2-min Calm",
-    b: s?.b || "Pick an Act ladder (Move Forward)",
-    c: s?.c || "Pick a Move ladder (Move Forward)",
-    doneStep: Number.isFinite(doneStep) ? doneStep : 0,
-  };
-}
-
-function readState() {
-  try {
-    const raw = localStorage.getItem(KEY_PRIMARY);
-    if (raw) return normalizeState(JSON.parse(raw));
-  } catch {}
-  try {
-    const raw2 = localStorage.getItem(KEY_FALLBACK);
-    if (raw2) return normalizeState(JSON.parse(raw2));
-  } catch {}
-  return normalizeState({}); // defaults
-}
-
-function saveState(s) {
-  try {
-    localStorage.setItem(KEY_PRIMARY, JSON.stringify(s));
-  } catch {}
+function sectionLabel(text) {
+  return el("div", { class: "small", style: "opacity:.85;font-weight:800;letter-spacing:.02em;" }, [text]);
 }
 
 // Supports "2-min" shorthand + ranges + hours + normal minutes
@@ -133,12 +109,73 @@ function detectMinutes(text) {
   return null;
 }
 
-function sectionLabel(text) {
-  return el("div", { class: "small", style: "opacity:.85;font-weight:800;letter-spacing:.02em;" }, [text]);
+/**
+ * Templates (Light / Medium / Hard)
+ * - Still read-only (no typing)
+ * - Act (Step 2) + Move (Step 3) are meant to be overwritten by Move Forward ladder choices
+ */
+const TEMPLATES = [
+  {
+    id: "light",
+    label: "Light",
+    a: "2-min Calm",
+    b: "Act: Water + light (3 min)",
+    c: "Move: Walk + breathe (5 min)",
+  },
+  {
+    id: "medium",
+    label: "Medium",
+    a: "2-min Calm",
+    b: "Act: Micro-task (2 min)",
+    c: "Move: Body reset (5 min)",
+  },
+  {
+    id: "hard",
+    label: "Hard",
+    a: "2-min Calm",
+    b: "Act: Clean 3 things (5 min)",
+    c: "Move: Outside reset (7 min)",
+  },
+];
+
+function getTemplateById(id) {
+  return TEMPLATES.find((t) => t.id === id) || null;
+}
+
+function normalizeState(s) {
+  const doneStep = Number(s?.doneStep);
+  const template = String(s?.template || "");
+  const t = getTemplateById(template) || getTemplateById("medium");
+
+  return {
+    template: t?.id || "medium",
+    a: String(s?.a || t?.a || "2-min Calm"),
+    b: String(s?.b || t?.b || "Act: Micro-task (2 min)"),
+    c: String(s?.c || t?.c || "Move: Walk + breathe (5 min)"),
+    doneStep: Number.isFinite(doneStep) ? doneStep : 0,
+  };
+}
+
+function readState() {
+  try {
+    const raw = localStorage.getItem(KEY_PRIMARY);
+    if (raw) return normalizeState(JSON.parse(raw));
+  } catch {}
+  try {
+    const raw2 = localStorage.getItem(KEY_FALLBACK);
+    if (raw2) return normalizeState(JSON.parse(raw2));
+  } catch {}
+  return normalizeState({});
+}
+
+function saveState(s) {
+  try {
+    localStorage.setItem(KEY_PRIMARY, JSON.stringify(s));
+  } catch {}
 }
 
 /**
- * ✅ FREE-TIER RULES (your request):
+ * ✅ FREE-TIER RULES (your current product decision):
  * - No typing/editing the plan (read-only UI).
  * - Move Forward selection MUST overwrite Step 2 or Step 3 every time.
  */
@@ -155,7 +192,7 @@ function forcePrefillFromIntent(state, stabilizedToday, intentObj) {
   // ✅ FORCE overwrite every time for targetStep
   if (text && target) {
     const key = target === 1 ? "a" : target === 2 ? "b" : "c";
-    state = { ...state, [key]: text, template: "locked" };
+    state = { ...state, [key]: text };
   }
 
   // Optional invisible advance marker (only upward)
@@ -164,7 +201,6 @@ function forcePrefillFromIntent(state, stabilizedToday, intentObj) {
     state = { ...state, doneStep: Math.max(state.doneStep || 0, Math.min(3, advanceTo)) };
   }
 
-  // Focus selection
   if (focusStep) return { state, focusStep };
   if (stabilizedToday) return { state, focusStep: 2 };
   return { state, focusStep: null };
@@ -186,6 +222,9 @@ export function renderTodayPlan() {
   // idle | running | window_end
   let mode = "idle";
   let stopElapsedSec = 0;
+
+  // templates panel
+  let showTemplates = false;
 
   // handoff / credit
   const rawIntent = consumeNextIntent();
@@ -350,11 +389,20 @@ export function renderTodayPlan() {
     rerender();
   }
 
-  function resetPlan() {
-    // Free tier default scaffold (not editable)
-    state = normalizeState({});
+  function applyTemplate(t) {
+    state = normalizeState({ template: t.id, a: t.a, b: t.b, c: t.c, doneStep: 0 });
     saveState(state);
+    activeStep = 1;
+    showTemplates = false;
+    mode = "idle";
+    stopTick();
+    running = false;
+    rerender();
+  }
 
+  function resetStepsOnly() {
+    state = { ...state, doneStep: 0 };
+    saveState(state);
     activeStep = 1;
     mode = "idle";
     stopTick();
@@ -362,11 +410,33 @@ export function renderTodayPlan() {
     rerender();
   }
 
+  function resetPlan() {
+    // Keep templates available; reset to default template
+    state = normalizeState({ template: stabilizedToday ? "light" : "medium", doneStep: 0 });
+    saveState(state);
+    activeStep = 1;
+    showTemplates = false;
+    mode = "idle";
+    stopTick();
+    running = false;
+    rerender();
+  }
+
+  function goPickFromMoveForward(tpStep) {
+    // tpStep: 2 => Act, 3 => Move
+    try {
+      setNextIntent("move_forward_pick", { tpStep });
+    } catch {}
+    location.hash = "#/green/move";
+  }
+
   function header() {
+    const templateLabel = getTemplateById(state.template)?.label || "Template";
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["Today’s Plan"]),
         el("p", { class: "p" }, ["Three steps only. One window at a time."]),
+        el("div", { class: "small" }, [`Plan style: ${templateLabel}`]),
         String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
         stabilizedToday && state.doneStep < 1 ? el("div", { class: "small" }, ["Stabilized today ✓ (Step 2 available)"]) : null,
         step3CreditToday && state.doneStep < 2 ? el("div", { class: "small" }, ["Moved forward today ✓ (Step 3 available)"]) : null,
@@ -377,35 +447,96 @@ export function renderTodayPlan() {
     ]);
   }
 
-  // ✅ Read-only plan UI (no typing)
+  // ✅ Read-only plan UI (templates + move-forward links)
   function planCard() {
     const lock2 = !canStartStep(2);
     const lock3 = !canStartStep(3);
 
-    function planRow(label, value, locked) {
+    function planRow(stepNum, value, locked) {
+      const label = `Step ${stepNum}`;
+      const isAct = stepNum === 2;
+      const isMove = stepNum === 3;
+
       return el("div", { class: "flowShell" }, [
         el("div", { class: "small" }, [label]),
-        el("div", {
-          class: "card",
-          style:
-            "padding:12px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);opacity:" +
-            (locked ? "0.65" : "1") +
-            ";",
-        }, [value || (locked ? "Locked…" : "—")]),
-      ]);
+        el(
+          "div",
+          {
+            class: "card",
+            style:
+              "padding:12px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);opacity:" +
+              (locked ? "0.65" : "1") +
+              ";",
+          },
+          [value || (locked ? "Locked…" : "—")]
+        ),
+        isAct
+          ? el("div", { class: "btnRow", style: "margin-top:8px" }, [
+              el(
+                "button",
+                {
+                  class: "btn",
+                  type: "button",
+                  onClick: () => goPickFromMoveForward(2),
+                  disabled: lock2 ? true : false,
+                },
+                ["Pick an Act ladder"]
+              ),
+            ])
+          : null,
+        isMove
+          ? el("div", { class: "btnRow", style: "margin-top:8px" }, [
+              el(
+                "button",
+                {
+                  class: "btn",
+                  type: "button",
+                  onClick: () => goPickFromMoveForward(3),
+                  disabled: lock3 ? true : false,
+                },
+                ["Pick a Move ladder"]
+              ),
+            ])
+          : null,
+      ].filter(Boolean));
     }
 
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Plan"),
-      el("p", { class: "small" }, ["Free tier: plan is auto-filled (no manual editing)."]),
       el("div", { class: "btnRow" }, [
+        el(
+          "button",
+          {
+            class: "btn",
+            type: "button",
+            onClick: () => {
+              showTemplates = !showTemplates;
+              rerender();
+            },
+          },
+          [showTemplates ? "Hide templates" : "Change template"]
+        ),
+        el("button", { class: "btn", type: "button", onClick: resetStepsOnly }, ["Reset steps"]),
         el("button", { class: "btn", type: "button", onClick: resetPlan }, ["Reset plan"]),
       ]),
+      showTemplates
+        ? el("div", { class: "flowShell", style: "margin-top:10px" }, [
+            el("p", { class: "small" }, ["Template sets a starting plan. Move Forward ladders can overwrite Step 2 or 3 anytime."]),
+            el(
+              "div",
+              { class: "btnRow" },
+              TEMPLATES.map((t) =>
+                el("button", { class: "btn", type: "button", onClick: () => applyTemplate(t) }, [t.label])
+              )
+            ),
+          ])
+        : null,
       el("div", { style: "height:10px" }, []),
-      planRow("Step 1", (state.a || "").trim(), false),
-      planRow("Step 2", (state.b || "").trim(), lock2),
-      planRow("Step 3", (state.c || "").trim(), lock3),
-    ]);
+      planRow(1, (state.a || "").trim(), false),
+      planRow(2, (state.b || "").trim(), lock2),
+      planRow(3, (state.c || "").trim(), lock3),
+      el("p", { class: "small" }, ["Rule: if it doesn’t fit in 3 steps, it’s not for today."]),
+    ].filter(Boolean));
   }
 
   function actionCard() {
@@ -413,23 +544,47 @@ export function renderTodayPlan() {
     const autoMin = detectMinutes(currentText) ?? 10;
 
     const stepButtons = el("div", { class: "btnRow" }, [
-      el("button", {
-        class: `btn ${activeStep === 1 ? "btnPrimary" : ""}`.trim(),
-        type: "button",
-        onClick: () => { activeStep = 1; mode = "idle"; rerender(); },
-      }, ["Step 1"]),
-      el("button", {
-        class: `btn ${activeStep === 2 ? "btnPrimary" : ""}`.trim(),
-        type: "button",
-        onClick: () => { activeStep = 2; mode = "idle"; rerender(); },
-        disabled: canStartStep(2) ? false : true,
-      }, ["Step 2"]),
-      el("button", {
-        class: `btn ${activeStep === 3 ? "btnPrimary" : ""}`.trim(),
-        type: "button",
-        onClick: () => { activeStep = 3; mode = "idle"; rerender(); },
-        disabled: canStartStep(3) ? false : true,
-      }, ["Step 3"]),
+      el(
+        "button",
+        {
+          class: `btn ${activeStep === 1 ? "btnPrimary" : ""}`.trim(),
+          type: "button",
+          onClick: () => {
+            activeStep = 1;
+            mode = "idle";
+            rerender();
+          },
+        },
+        ["Step 1"]
+      ),
+      el(
+        "button",
+        {
+          class: `btn ${activeStep === 2 ? "btnPrimary" : ""}`.trim(),
+          type: "button",
+          onClick: () => {
+            activeStep = 2;
+            mode = "idle";
+            rerender();
+          },
+          disabled: canStartStep(2) ? false : true,
+        },
+        ["Step 2"]
+      ),
+      el(
+        "button",
+        {
+          class: `btn ${activeStep === 3 ? "btnPrimary" : ""}`.trim(),
+          type: "button",
+          onClick: () => {
+            activeStep = 3;
+            mode = "idle";
+            rerender();
+          },
+          disabled: canStartStep(3) ? false : true,
+        },
+        ["Step 3"]
+      ),
     ]);
 
     if (mode === "running") {
@@ -449,19 +604,38 @@ export function renderTodayPlan() {
       const hasNext = activeStep < 3;
       const line = stopElapsedSec > 0 ? `Window closed (${stopElapsedSec}s).` : "Window closed.";
 
+      // ✅ Ladder should lead to the next step: after a step window ends, default CTA is the next step.
+      // If next step is 2 or 3, user can also jump to Move Forward to overwrite it.
       return el("div", { class: "card cardPad" }, [
         sectionLabel("Next step"),
         el("p", { class: "p" }, [line]),
         el("div", { class: "btnRow" }, [
           hasNext
-            ? el("button", {
-                class: "btn btnPrimary",
-                type: "button",
-                onClick: () => { activeStep = nextStep; mode = "idle"; stopElapsedSec = 0; rerender(); },
-              }, [`Step ${nextStep}`])
-            : el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
+            ? el(
+                "button",
+                {
+                  class: "btn btnPrimary",
+                  type: "button",
+                  onClick: () => {
+                    activeStep = nextStep;
+                    mode = "idle";
+                    stopElapsedSec = 0;
+                    rerender();
+                  },
+                },
+                [`Step ${nextStep}`]
+              )
+            : el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, [
+                "Reset",
+              ]),
+          nextStep === 2
+            ? el("button", { class: "btn", type: "button", onClick: () => goPickFromMoveForward(2) }, ["Pick Act ladder"])
+            : null,
+          nextStep === 3
+            ? el("button", { class: "btn", type: "button", onClick: () => goPickFromMoveForward(3) }, ["Pick Move ladder"])
+            : null,
           el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/reflect") }, ["Clarify"]),
-        ]),
+        ].filter(Boolean)),
       ]);
     }
 
