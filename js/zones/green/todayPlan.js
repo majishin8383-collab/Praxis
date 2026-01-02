@@ -1,4 +1,10 @@
-/*!  * Praxis  * © 2025 Joseph Satmary. All rights reserved. * Public demo does not grant a license to use, copy, modify, or distribute. */// js/zones/green/todayPlan.js  (FULL REPLACEMENT)
+/*!  
+ * Praxis  
+ * © 2025 Joseph Satmary. All rights reserved.
+ * Public demo does not grant a license to use, copy, modify, or distribute.
+ */
+
+// js/zones/green/todayPlan.js  (FULL REPLACEMENT)
 import {
   appendLog,
   consumeNextIntent,
@@ -69,10 +75,10 @@ function grantToken() {
 function normalizeState(s) {
   const doneStep = Number(s?.doneStep);
   return {
-    template: s?.template || "",
-    a: s?.a || "",
-    b: s?.b || "",
-    c: s?.c || "",
+    template: s?.template || "locked", // free-tier: locked plan
+    a: s?.a || "2-min Calm",
+    b: s?.b || "Pick an Act ladder (Move Forward)",
+    c: s?.c || "Pick a Move ladder (Move Forward)",
     doneStep: Number.isFinite(doneStep) ? doneStep : 0,
   };
 }
@@ -86,35 +92,13 @@ function readState() {
     const raw2 = localStorage.getItem(KEY_FALLBACK);
     if (raw2) return normalizeState(JSON.parse(raw2));
   } catch {}
-  return { template: "", a: "", b: "", c: "", doneStep: 0 };
+  return normalizeState({}); // defaults
 }
 
 function saveState(s) {
   try {
     localStorage.setItem(KEY_PRIMARY, JSON.stringify(s));
   } catch {}
-}
-
-const TEMPLATES = [
-  { id: "stability", label: "Stability", a: "2-min Calm", b: "5-min walk / movement", c: "One small maintenance task" },
-  { id: "maintenance", label: "Maintenance", a: "Clean one area (10 min)", b: "Reply to one important thing", c: "Prep tomorrow (5 min)" },
-  { id: "progress", label: "Progress", a: "Start the hard task (25 min)", b: "Continue or finish (10–25 min)", c: "Quick wrap-up / tidy (5 min)" },
-  { id: "recovery", label: "Recovery", a: "Eat / hydrate", b: "Shower or reset body", c: "Early night / low stimulation" },
-];
-
-function getTemplateById(id) {
-  return TEMPLATES.find((t) => t.id === id) || null;
-}
-
-function isBlankPlan(state) {
-  const a = (state.a || "").trim();
-  const b = (state.b || "").trim();
-  const c = (state.c || "").trim();
-  return !a && !b && !c;
-}
-
-function pickDefaultTemplateId(stabilizedToday) {
-  return stabilizedToday ? "stability" : "progress";
 }
 
 // Supports "2-min" shorthand + ranges + hours + normal minutes
@@ -153,61 +137,34 @@ function sectionLabel(text) {
   return el("div", { class: "small", style: "opacity:.85;font-weight:800;letter-spacing:.02em;" }, [text]);
 }
 
-function templateDefaultForStep(templateId, stepNum) {
-  const t = getTemplateById(templateId);
-  if (!t) return "";
-  if (stepNum === 1) return String(t.a || "");
-  if (stepNum === 2) return String(t.b || "");
-  return String(t.c || "");
-}
-
-// overwrite-safe if the current value is exactly the template default (i.e. not user-authored)
-function canOverwriteBecauseTemplateDefault(state, stepNum) {
-  if (!state?.template) return false;
-  if (state.template === "custom") return false;
-
-  const current =
-    stepNum === 1 ? String(state.a || "") : stepNum === 2 ? String(state.b || "") : String(state.c || "");
-  const def = templateDefaultForStep(state.template, stepNum);
-  return current.trim() && def.trim() && current.trim() === def.trim();
-}
-
 /**
- * Auto-fill rule:
- * - Never overwrite user-written text.
- * - DO overwrite template-default text (because it’s scaffold, not the user’s plan).
- * - NEW (optional): advanceDoneStep can invisibly bump doneStep (no UI marker).
- * - Option B routing: focus Step 2 after Stabilize + Move Forward.
+ * ✅ FREE-TIER RULES (your request):
+ * - No typing/editing the plan (read-only UI).
+ * - Move Forward selection MUST overwrite Step 2 or Step 3 every time.
  */
-function prefillFromIntent(state, stabilizedToday, intentObj) {
+function forcePrefillFromIntent(state, stabilizedToday, intentObj) {
   const payload = intentObj?.payload && typeof intentObj.payload === "object" ? intentObj.payload : null;
   if (!payload) return { state, focusStep: null };
 
   const text = typeof payload.text === "string" ? payload.text.trim() : "";
-  const target = payload.targetStep === 1 || payload.targetStep === 2 || payload.targetStep === 3 ? payload.targetStep : null;
-  const focusStep = payload.focusStep === 1 || payload.focusStep === 2 || payload.focusStep === 3 ? payload.focusStep : null;
+  const target =
+    payload.targetStep === 1 || payload.targetStep === 2 || payload.targetStep === 3 ? payload.targetStep : null;
+  const focusStep =
+    payload.focusStep === 1 || payload.focusStep === 2 || payload.focusStep === 3 ? payload.focusStep : null;
 
+  // ✅ FORCE overwrite every time for targetStep
   if (text && target) {
     const key = target === 1 ? "a" : target === 2 ? "b" : "c";
-    const current = String(state[key] || "").trim();
-    const overwriteOk = canOverwriteBecauseTemplateDefault(state, target);
-
-    if (!current || overwriteOk) {
-      state = {
-        ...state,
-        [key]: text,
-        // If they’re on a template and we overwrite one field, it becomes “custom”
-        template: state.template && state.template !== "custom" ? "custom" : state.template || "custom",
-      };
-    }
+    state = { ...state, [key]: text, template: "locked" };
   }
 
-  // ✅ NEW: optional invisible “done” bump
-  const adv = Number(payload.advanceDoneStep || 0);
-  if (Number.isFinite(adv) && adv >= 1 && adv <= 3) {
-    state = { ...state, doneStep: Math.max(Number(state.doneStep || 0), adv) };
+  // Optional invisible advance marker (only upward)
+  const advanceTo = Number(payload.advanceDoneStep || 0);
+  if (Number.isFinite(advanceTo) && advanceTo > 0) {
+    state = { ...state, doneStep: Math.max(state.doneStep || 0, Math.min(3, advanceTo)) };
   }
 
+  // Focus selection
   if (focusStep) return { state, focusStep };
   if (stabilizedToday) return { state, focusStep: 2 };
   return { state, focusStep: null };
@@ -230,11 +187,9 @@ export function renderTodayPlan() {
   let mode = "idle";
   let stopElapsedSec = 0;
 
-  // plan type panel (collapsed)
-  let showTemplates = false;
-
   // handoff / credit
   const rawIntent = consumeNextIntent();
+
   const stabilizedToday = (() => {
     try {
       return hasStabilizeCreditToday();
@@ -242,26 +197,13 @@ export function renderTodayPlan() {
       return false;
     }
   })();
-  const step3CreditToday = hasStep3CreditToday();
 
-  // Always template-based by default unless user already has content
-  if (isBlankPlan(state)) {
-    const defaultId = pickDefaultTemplateId(stabilizedToday);
-    const t = getTemplateById(defaultId);
-    if (t) {
-      state = { ...state, template: t.id, a: t.a, b: t.b, c: t.c };
-      saveState(state);
-    }
-  } else {
-    if (!state.template) {
-      state = { ...state, template: "custom" };
-      saveState(state);
-    }
-  }
+  const step3CreditToday = hasStep3CreditToday();
 
   // --- intent parsing (string or object) ---
   let intentName = null;
   let intentPayload = null;
+
   if (rawIntent && typeof rawIntent === "object" && rawIntent.intent) {
     intentName = String(rawIntent.intent || "");
     intentPayload = rawIntent.payload || null;
@@ -269,9 +211,9 @@ export function renderTodayPlan() {
     intentName = rawIntent;
   }
 
-  // Apply payload-based prefill (if present)
+  // ✅ Apply payload-based prefill (FORCED overwrite)
   if (intentName && intentPayload) {
-    const { state: nextState, focusStep } = prefillFromIntent(state, stabilizedToday, {
+    const { state: nextState, focusStep } = forcePrefillFromIntent(state, stabilizedToday, {
       intent: intentName,
       payload: intentPayload,
     });
@@ -280,7 +222,7 @@ export function renderTodayPlan() {
     if (focusStep) activeStep = focusStep;
   }
 
-  // Default focus Step 2 if stabilized or intentStep2
+  // Default focus Step 2 if stabilized or legacy intentStep2
   if ((intentName === "today_plan_step2" || stabilizedToday) && state.doneStep < 1) {
     activeStep = 2;
   }
@@ -349,7 +291,6 @@ export function renderTodayPlan() {
     safeAppendLog({
       kind: "today_plan_step_start",
       when: nowISO(),
-      template: state.template || "custom",
       minutes: liveDurationMin,
       step: activeStep,
       stepText: txt,
@@ -369,7 +310,6 @@ export function renderTodayPlan() {
         safeAppendLog({
           kind: "today_plan_step_window_end",
           when: nowISO(),
-          template: state.template || "custom",
           minutesPlanned: liveDurationMin,
           step: activeStep,
           build: BUILD,
@@ -391,6 +331,7 @@ export function renderTodayPlan() {
 
     stopTick();
     running = false;
+
     stopElapsedSec = Math.max(0, Math.round(elapsedMs / 1000));
 
     grantToken();
@@ -399,7 +340,6 @@ export function renderTodayPlan() {
     safeAppendLog({
       kind: "today_plan_step_stop",
       when: nowISO(),
-      template: state.template || "custom",
       minutesPlanned: liveDurationMin,
       elapsedSec: stopElapsedSec,
       step: activeStep,
@@ -410,25 +350,12 @@ export function renderTodayPlan() {
     rerender();
   }
 
-  function applyTemplate(t) {
-    state = { ...state, template: t.id, a: t.a, b: t.b, c: t.c, doneStep: 0 };
-    saveState(state);
-    activeStep = 1;
-    showTemplates = false;
-    mode = "idle";
-    stopTick();
-    running = false;
-    rerender();
-  }
-
   function resetPlan() {
-    state = { template: "", a: "", b: "", c: "", doneStep: 0 };
-    const defaultId = pickDefaultTemplateId(stabilizedToday);
-    const t = getTemplateById(defaultId);
-    if (t) state = { ...state, template: t.id, a: t.a, b: t.b, c: t.c, doneStep: 0 };
+    // Free tier default scaffold (not editable)
+    state = normalizeState({});
     saveState(state);
+
     activeStep = 1;
-    showTemplates = false;
     mode = "idle";
     stopTick();
     running = false;
@@ -450,71 +377,35 @@ export function renderTodayPlan() {
     ]);
   }
 
-  function mergedPlanCard() {
-    const currentLabel =
-      state.template && state.template !== "custom"
-        ? getTemplateById(state.template)?.label || "Template"
-        : "Custom";
-
+  // ✅ Read-only plan UI (no typing)
+  function planCard() {
     const lock2 = !canStartStep(2);
     const lock3 = !canStartStep(3);
 
-    function stepInput(label, key, locked) {
+    function planRow(label, value, locked) {
       return el("div", { class: "flowShell" }, [
         el("div", { class: "small" }, [label]),
-        el("input", {
-          value: state[key],
-          placeholder: locked ? "Locked…" : "Small + concrete… (add “10 min” to auto-set)",
-          disabled: locked ? true : false,
+        el("div", {
+          class: "card",
           style:
-            "width:100%;padding:12px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);opacity:" +
+            "padding:12px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);opacity:" +
             (locked ? "0.65" : "1") +
             ";",
-          onInput: (e) => {
-            state[key] = e.target.value;
-            if (state.template && state.template !== "custom") state.template = "custom";
-            saveState(state);
-          },
-        }),
+        }, [value || (locked ? "Locked…" : "—")]),
       ]);
     }
 
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Plan"),
-      el("p", { class: "small" }, [`Type: ${currentLabel}`]),
+      el("p", { class: "small" }, ["Free tier: plan is auto-filled (no manual editing)."]),
       el("div", { class: "btnRow" }, [
-        el(
-          "button",
-          {
-            class: "btn",
-            type: "button",
-            onClick: () => {
-              showTemplates = !showTemplates;
-              rerender();
-            },
-          },
-          [showTemplates ? "Hide templates" : "Change template"]
-        ),
         el("button", { class: "btn", type: "button", onClick: resetPlan }, ["Reset plan"]),
       ]),
-      showTemplates
-        ? el("div", { class: "flowShell", style: "margin-top:10px" }, [
-            el("p", { class: "small" }, ["Switching template resets step progress."]),
-            el(
-              "div",
-              { class: "btnRow" },
-              TEMPLATES.map((t) =>
-                el("button", { class: "btn", type: "button", onClick: () => applyTemplate(t) }, [t.label])
-              )
-            ),
-          ])
-        : null,
       el("div", { style: "height:10px" }, []),
-      stepInput("Step 1", "a", false),
-      stepInput("Step 2", "b", lock2),
-      stepInput("Step 3", "c", lock3),
-      el("p", { class: "small" }, ["Rule: if it doesn’t fit in 3 steps, it’s not for today."]),
-    ].filter(Boolean));
+      planRow("Step 1", (state.a || "").trim(), false),
+      planRow("Step 2", (state.b || "").trim(), lock2),
+      planRow("Step 3", (state.c || "").trim(), lock3),
+    ]);
   }
 
   function actionCard() {
@@ -522,35 +413,23 @@ export function renderTodayPlan() {
     const autoMin = detectMinutes(currentText) ?? 10;
 
     const stepButtons = el("div", { class: "btnRow" }, [
-      el(
-        "button",
-        {
-          class: `btn ${activeStep === 1 ? "btnPrimary" : ""}`.trim(),
-          type: "button",
-          onClick: () => { activeStep = 1; mode = "idle"; rerender(); },
-        },
-        ["Step 1"]
-      ),
-      el(
-        "button",
-        {
-          class: `btn ${activeStep === 2 ? "btnPrimary" : ""}`.trim(),
-          type: "button",
-          onClick: () => { activeStep = 2; mode = "idle"; rerender(); },
-          disabled: canStartStep(2) ? false : true,
-        },
-        ["Step 2"]
-      ),
-      el(
-        "button",
-        {
-          class: `btn ${activeStep === 3 ? "btnPrimary" : ""}`.trim(),
-          type: "button",
-          onClick: () => { activeStep = 3; mode = "idle"; rerender(); },
-          disabled: canStartStep(3) ? false : true,
-        },
-        ["Step 3"]
-      ),
+      el("button", {
+        class: `btn ${activeStep === 1 ? "btnPrimary" : ""}`.trim(),
+        type: "button",
+        onClick: () => { activeStep = 1; mode = "idle"; rerender(); },
+      }, ["Step 1"]),
+      el("button", {
+        class: `btn ${activeStep === 2 ? "btnPrimary" : ""}`.trim(),
+        type: "button",
+        onClick: () => { activeStep = 2; mode = "idle"; rerender(); },
+        disabled: canStartStep(2) ? false : true,
+      }, ["Step 2"]),
+      el("button", {
+        class: `btn ${activeStep === 3 ? "btnPrimary" : ""}`.trim(),
+        type: "button",
+        onClick: () => { activeStep = 3; mode = "idle"; rerender(); },
+        disabled: canStartStep(3) ? false : true,
+      }, ["Step 3"]),
     ]);
 
     if (mode === "running") {
@@ -575,15 +454,11 @@ export function renderTodayPlan() {
         el("p", { class: "p" }, [line]),
         el("div", { class: "btnRow" }, [
           hasNext
-            ? el(
-                "button",
-                {
-                  class: "btn btnPrimary",
-                  type: "button",
-                  onClick: () => { activeStep = nextStep; mode = "idle"; stopElapsedSec = 0; rerender(); },
-                },
-                [`Step ${nextStep}`]
-              )
+            ? el("button", {
+                class: "btn btnPrimary",
+                type: "button",
+                onClick: () => { activeStep = nextStep; mode = "idle"; stopElapsedSec = 0; rerender(); },
+              }, [`Step ${nextStep}`])
             : el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
           el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/reflect") }, ["Clarify"]),
         ]),
@@ -593,10 +468,8 @@ export function renderTodayPlan() {
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Start"),
       stepButtons,
-      el("p", { class: "p", style: "margin-top:8px;font-weight:900;" }, [currentText ? currentText : "Add text to this step above."]),
-      currentText
-        ? el("p", { class: "small", style: "margin-top:8px" }, [`Timer: ${autoMin} min (auto)`])
-        : el("p", { class: "small", style: "margin-top:8px" }, ["Timer: 10 min default (add a time to override)."]),
+      el("p", { class: "p", style: "margin-top:8px;font-weight:900;" }, [currentText || "—"]),
+      el("p", { class: "small", style: "margin-top:8px" }, [`Timer: ${autoMin} min (auto)`]),
       el("div", { class: "btnRow" }, [
         el("button", {
           class: "btn btnPrimary",
@@ -611,7 +484,7 @@ export function renderTodayPlan() {
   function rerender() {
     wrap.innerHTML = "";
     wrap.appendChild(header());
-    wrap.appendChild(mergedPlanCard());
+    wrap.appendChild(planCard());
     wrap.appendChild(actionCard());
     if (running) updateTimerUI();
   }
