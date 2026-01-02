@@ -1,11 +1,7 @@
-/*!
- *
- * Praxis
- * © 2025 Joseph Satmary. All rights reserved.
+/*! * * Praxis * © 2025 Joseph Satmary. All rights reserved.
  * Public demo does not grant a license to use, copy, modify, or distribute.
- *
- */
-// js/zones/green/todayPlan.js (FULL REPLACEMENT)
+ * */
+/// js/zones/green/todayPlan.js (FULL REPLACEMENT)
 import {
   appendLog,
   consumeNextIntent,
@@ -32,7 +28,6 @@ function localDayStamp() {
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
-
 function hasStep3CreditToday() {
   try {
     return localStorage.getItem(KEY_TP3_CREDIT_DAY) === localDayStamp();
@@ -60,7 +55,6 @@ function el(tag, attrs = {}, children = []) {
 }
 
 const nowISO = () => new Date().toISOString();
-
 function safeAppendLog(entry) {
   try {
     appendLog(entry);
@@ -82,21 +76,25 @@ function sectionLabel(text) {
 function detectMinutes(text) {
   if (!text) return null;
   const t = String(text).toLowerCase();
+
   const hyphen = t.match(/(\d+)\s*-\s*(min|mins|minute|minutes)\b/);
   if (hyphen) {
     const n = parseInt(hyphen[1], 10);
     if (Number.isFinite(n) && n > 0) return Math.min(60, n);
   }
+
   const range = t.match(/(\d+)\s*[–-]\s*(\d+)\s*(min|mins|minute|minutes)\b/);
   if (range) {
     const n = parseInt(range[1], 10);
     if (Number.isFinite(n) && n > 0) return Math.min(60, n);
   }
+
   const hr = t.match(/(\d+)\s*(hour|hours|hr|hrs)\b/);
   if (hr) {
     const n = parseInt(hr[1], 10);
     if (Number.isFinite(n) && n > 0) return Math.min(180, n * 60);
   }
+
   const m = t.match(/(\d+)\s*(min|mins|minute|minutes|m)\b/);
   if (m) {
     const n = parseInt(m[1], 10);
@@ -111,27 +109,9 @@ function detectMinutes(text) {
  * - Act (Step 2) + Move (Step 3) are meant to be overwritten by Move Forward ladder choices
  */
 const TEMPLATES = [
-  {
-    id: "light",
-    label: "Light",
-    a: "2-min Calm",
-    b: "Act: Water + light (3 min)",
-    c: "Move: Walk + breathe (5 min)",
-  },
-  {
-    id: "medium",
-    label: "Medium",
-    a: "2-min Calm",
-    b: "Act: Micro-task (2 min)",
-    c: "Move: Body reset (5 min)",
-  },
-  {
-    id: "hard",
-    label: "Hard",
-    a: "2-min Calm",
-    b: "Act: Clean 3 things (5 min)",
-    c: "Move: Outside reset (7 min)",
-  },
+  { id: "light", label: "Light", a: "2-min Calm", b: "Act: Water + light (3 min)", c: "Move: Walk + breathe (5 min)" },
+  { id: "medium", label: "Medium", a: "2-min Calm", b: "Act: Micro-task (2 min)", c: "Move: Body reset (5 min)" },
+  { id: "hard", label: "Hard", a: "2-min Calm", b: "Act: Clean 3 things (5 min)", c: "Move: Outside reset (7 min)" },
 ];
 
 function getTemplateById(id) {
@@ -334,7 +314,6 @@ export function renderTodayPlan() {
       if (endAt - Date.now() <= 0) {
         stopTick();
         running = false;
-
         grantToken();
         markStepAdvanced();
 
@@ -401,18 +380,6 @@ export function renderTodayPlan() {
     rerender();
   }
 
-  function resetPlan() {
-    // Keep templates available; reset to default template
-    state = normalizeState({ template: stabilizedToday ? "light" : "medium", doneStep: 0 });
-    saveState(state);
-    activeStep = 1;
-    showTemplates = false;
-    mode = "idle";
-    stopTick();
-    running = false;
-    rerender();
-  }
-
   function goPickFromMoveForward(tpStep) {
     // tpStep: 2 => Act, 3 => Move
     try {
@@ -424,14 +391,18 @@ export function renderTodayPlan() {
   function header() {
     const templateLabel = getTemplateById(state.template)?.label || "Template";
     return el("div", { class: "flowHeader" }, [
-      el("div", {}, [
-        el("h1", { class: "h1" }, ["Today’s Plan"]),
-        el("p", { class: "p" }, ["Three steps only. One window at a time."]),
-        el("div", { class: "small" }, [`Plan style: ${templateLabel}`]),
-        String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
-        stabilizedToday && state.doneStep < 1 ? el("div", { class: "small" }, ["Stabilized today ✓ (Step 2 available)"]) : null,
-        step3CreditToday && state.doneStep < 2 ? el("div", { class: "small" }, ["Moved forward today ✓ (Step 3 available)"]) : null,
-      ].filter(Boolean)),
+      el(
+        "div",
+        {},
+        [
+          el("h1", { class: "h1" }, ["Today’s Plan"]),
+          el("p", { class: "p" }, ["Three steps only. One window at a time."]),
+          el("div", { class: "small" }, [`Plan style: ${templateLabel}`]),
+          String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
+          stabilizedToday && state.doneStep < 1 ? el("div", { class: "small" }, ["Stabilized today ✓ (Step 2 available)"]) : null,
+          step3CreditToday && state.doneStep < 2 ? el("div", { class: "small" }, ["Moved forward today ✓ (Step 3 available)"]) : null,
+        ].filter(Boolean)
+      ),
       el("div", { class: "flowMeta" }, [
         el("button", { class: "linkBtn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
       ]),
@@ -448,50 +419,54 @@ export function renderTodayPlan() {
       const isAct = stepNum === 2;
       const isMove = stepNum === 3;
 
-      return el("div", { class: "flowShell" }, [
-        el("div", { class: "small" }, [label]),
-        el(
-          "div",
-          {
-            class: "card",
-            style:
-              "padding:12px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);opacity:" +
-              (locked ? "0.65" : "1") +
-              ";",
-          },
-          [value || (locked ? "Locked…" : "—")]
-        ),
-        isAct
-          ? el("div", { class: "btnRow", style: "margin-top:8px" }, [
-              el(
-                "button",
-                {
-                  class: "btn",
-                  type: "button",
-                  onClick: () => goPickFromMoveForward(2),
-                  // ✅ Never disable picking ladders (planning can happen even if starting is locked)
-                  disabled: false,
-                },
-                ["Pick an Act ladder"]
-              ),
-            ])
-          : null,
-        isMove
-          ? el("div", { class: "btnRow", style: "margin-top:8px" }, [
-              el(
-                "button",
-                {
-                  class: "btn",
-                  type: "button",
-                  onClick: () => goPickFromMoveForward(3),
-                  // ✅ Never disable picking ladders
-                  disabled: false,
-                },
-                ["Pick a Move ladder"]
-              ),
-            ])
-          : null,
-      ].filter(Boolean));
+      return el(
+        "div",
+        { class: "flowShell" },
+        [
+          el("div", { class: "small" }, [label]),
+          el(
+            "div",
+            {
+              class: "card",
+              style:
+                "padding:12px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);opacity:" +
+                (locked ? "0.65" : "1") +
+                ";",
+            },
+            [value || (locked ? "Locked…" : "—")]
+          ),
+          isAct
+            ? el("div", { class: "btnRow", style: "margin-top:8px" }, [
+                el(
+                  "button",
+                  {
+                    class: "btn",
+                    type: "button",
+                    onClick: () => goPickFromMoveForward(2),
+                    // ✅ Never disable picking ladders (planning can happen even if starting is locked)
+                    disabled: false,
+                  },
+                  ["Pick an Act ladder"]
+                ),
+              ])
+            : null,
+          isMove
+            ? el("div", { class: "btnRow", style: "margin-top:8px" }, [
+                el(
+                  "button",
+                  {
+                    class: "btn",
+                    type: "button",
+                    onClick: () => goPickFromMoveForward(3),
+                    // ✅ Never disable picking ladders
+                    disabled: false,
+                  },
+                  ["Pick a Move ladder"]
+                ),
+              ])
+            : null,
+        ].filter(Boolean)
+      );
     }
 
     return el("div", { class: "card cardPad" }, [
@@ -510,7 +485,7 @@ export function renderTodayPlan() {
           [showTemplates ? "Hide templates" : "Change template"]
         ),
         el("button", { class: "btn", type: "button", onClick: resetStepsOnly }, ["Reset steps"]),
-        el("button", { class: "btn", type: "button", onClick: resetPlan }, ["Reset plan"]),
+        // ✅ Removed "Reset plan" (keeps UI clean; template changes already cover plan resets)
       ]),
       showTemplates
         ? el("div", { class: "flowShell", style: "margin-top:10px" }, [
@@ -518,9 +493,7 @@ export function renderTodayPlan() {
             el(
               "div",
               { class: "btnRow" },
-              TEMPLATES.map((t) =>
-                el("button", { class: "btn", type: "button", onClick: () => applyTemplate(t) }, [t.label])
-              )
+              TEMPLATES.map((t) => el("button", { class: "btn", type: "button", onClick: () => applyTemplate(t) }, [t.label]))
             ),
           ])
         : null,
@@ -585,9 +558,7 @@ export function renderTodayPlan() {
         sectionLabel(`Active • Step ${activeStep}`),
         el("div", { class: "timerBox" }, [
           el("div", { class: "timerReadout", "data-timer-readout": "1" }, [formatMMSS(remainingMs())]),
-          el("div", { class: "btnRow" }, [
-            el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"]),
-          ]),
+          el("div", { class: "btnRow" }, [el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"])]),
         ]),
       ]);
     }
@@ -617,12 +588,8 @@ export function renderTodayPlan() {
                 [`Step ${nextStep}`]
               )
             : el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
-          nextStep === 2
-            ? el("button", { class: "btn", type: "button", onClick: () => goPickFromMoveForward(2) }, ["Pick Act ladder"])
-            : null,
-          nextStep === 3
-            ? el("button", { class: "btn", type: "button", onClick: () => goPickFromMoveForward(3) }, ["Pick Move ladder"])
-            : null,
+          nextStep === 2 ? el("button", { class: "btn", type: "button", onClick: () => goPickFromMoveForward(2) }, ["Pick Act ladder"]) : null,
+          nextStep === 3 ? el("button", { class: "btn", type: "button", onClick: () => goPickFromMoveForward(3) }, ["Pick Move ladder"]) : null,
           el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/reflect") }, ["Clarify"]),
         ].filter(Boolean)),
       ]);
@@ -634,12 +601,9 @@ export function renderTodayPlan() {
       el("p", { class: "p", style: "margin-top:8px;font-weight:900;" }, [currentText || "—"]),
       el("p", { class: "small", style: "margin-top:8px" }, [`Timer: ${autoMin} min (auto)`]),
       el("div", { class: "btnRow" }, [
-        el("button", {
-          class: "btn btnPrimary",
-          type: "button",
-          onClick: startTimerForStep,
-          disabled: !(currentText && canStartStep(activeStep)) || running,
-        }, ["Start Step"]),
+        el("button", { class: "btn btnPrimary", type: "button", onClick: startTimerForStep, disabled: !(currentText && canStartStep(activeStep)) || running }, [
+          "Start Step",
+        ]),
       ]),
     ]);
   }
