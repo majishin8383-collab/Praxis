@@ -172,7 +172,7 @@ export function renderMoveForward() {
   let tick = null;
 
   // UI state (normal landing only)
-  let showMovePicks = true; // you said you like the expanded view as current landing
+  let showMovePicks = false; // ✅ collapsed by default
 
   // bookkeeping
   let stoppedEarly = false;
@@ -359,7 +359,8 @@ export function renderMoveForward() {
   function pickerCard() {
     const list = pickerTpStep === 2 ? ACT_PICKS : MOVE_PICKS;
     const title = pickerTpStep === 2 ? "Act ladders" : "Move ladders";
-    const desc = pickerTpStep === 2 ? "Choose an Act ladder to overwrite Step 2." : "Choose a Move ladder to overwrite Step 3.";
+    const desc =
+      pickerTpStep === 2 ? "Choose an Act ladder to overwrite Step 2." : "Choose a Move ladder to overwrite Step 3.";
     return el("div", { class: "card cardPad" }, [
       sectionLabel(title),
       el("p", { class: "small" }, [desc]),
@@ -371,28 +372,39 @@ export function renderMoveForward() {
   }
 
   function landingCard() {
-    return el("div", { class: "card cardPad" }, [
-      sectionLabel("Act"),
-      el("p", { class: "small" }, ["Start with a small action."]),
-      el("div", { class: "flowShell", style: "margin-top:10px" }, ACT_PICKS.map((id) => ladderTile(findLadder(id)))),
+    return el(
+      "div",
+      { class: "card cardPad" },
+      [
+        sectionLabel("Act"),
+        el("p", { class: "small" }, ["Start with a small action."]),
+        el("div", { class: "flowShell", style: "margin-top:10px" }, ACT_PICKS.map((id) => ladderTile(findLadder(id)))),
 
-      el("div", { class: "btnRow", style: "margin-top:10px" }, [
-        el(
-          "button",
-          { class: showMovePicks ? "btn btnPrimary" : "btn", type: "button", onClick: () => { showMovePicks = !showMovePicks; rerender(); } },
-          [showMovePicks ? "Hide Move" : "Move"]
-        ),
-        el("button", { class: "btn", type: "button", onClick: () => goTodayWithPrefill(findLadder(selectedLadderId)) }, ["Today’s Plan"]),
-      ]),
+        el("div", { class: "btnRow", style: "margin-top:10px" }, [
+          el(
+            "button",
+            {
+              class: showMovePicks ? "btn btnPrimary" : "btn",
+              type: "button",
+              onClick: () => {
+                showMovePicks = !showMovePicks;
+                rerender();
+              },
+            },
+            [showMovePicks ? "Hide Move" : "Move"]
+          ),
+          el("button", { class: "btn", type: "button", onClick: () => goTodayWithPrefill(findLadder(selectedLadderId)) }, ["Today’s Plan"]),
+        ]),
 
-      showMovePicks
-        ? el("div", { style: "margin-top:14px" }, [
-            sectionLabel("Move"),
-            el("p", { class: "small" }, ["Then use your body to shift state."]),
-            el("div", { class: "flowShell", style: "margin-top:10px" }, MOVE_PICKS.map((id) => ladderTile(findLadder(id)))),
-          ])
-        : null,
-    ].filter(Boolean));
+        showMovePicks
+          ? el("div", { style: "margin-top:14px" }, [
+              sectionLabel("Move"),
+              el("p", { class: "small" }, ["Then use your body to shift state."]),
+              el("div", { class: "flowShell", style: "margin-top:10px" }, MOVE_PICKS.map((id) => ladderTile(findLadder(id)))),
+            ])
+          : null,
+      ].filter(Boolean)
+    );
   }
 
   function selectedCard() {
@@ -402,11 +414,15 @@ export function renderMoveForward() {
       sectionLabel("Selected"),
       el("h2", { class: "h2" }, [ladder.title]),
       el("p", { class: "p" }, [`${tag}. ${ladder.desc}`]),
-      el("div", { class: "flowShell", style: "margin-top:10px" }, ladder.steps.map((s) =>
-        el("div", { style: "padding:10px 0;border-bottom:1px solid var(--line);" }, [
-          el("div", { style: "font-weight:900;" }, [s]),
-        ])
-      )),
+      el(
+        "div",
+        { class: "flowShell", style: "margin-top:10px" },
+        ladder.steps.map((s) =>
+          el("div", { style: "padding:10px 0;border-bottom:1px solid var(--line);" }, [
+            el("div", { style: "font-weight:900;" }, [s]),
+          ])
+        )
+      ),
       el("div", { class: "btnRow", style: "margin-top:12px" }, [
         el("button", { class: "btn btnPrimary", type: "button", onClick: startSelected }, [`Start • ${ladder.minutes} min`]),
         el("button", { class: "btn", type: "button", onClick: () => { mode = "pick"; rerender(); } }, ["Back"]),
@@ -420,9 +436,7 @@ export function renderMoveForward() {
       sectionLabel(`Active • ${durationMin} min`),
       el("div", { class: "timerBox" }, [
         el("div", { class: "timerReadout", "data-timer-readout": "1" }, [formatMMSS(remainingMs())]),
-        el("div", { class: "btnRow" }, [
-          el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"]),
-        ]),
+        el("div", { class: "btnRow" }, [el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"])]),
       ]),
     ]);
   }
