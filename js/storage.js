@@ -1,5 +1,5 @@
 /*! 
- * Praxis 
+ * Praxis
  * © 2025 Joseph Satmary. All rights reserved.
  * Public demo does not grant a license to use, copy, modify, or distribute.
  *
@@ -13,6 +13,13 @@ const KEY_STABILIZE_DAY = "praxis_stabilize_credit_day_v1";
 
 // One-time routing hint between tools (intent handoff)
 const KEY_NEXT_INTENT = "praxis_next_intent_v1";
+
+// Tier (0=free, 1=pro, 2=plus... whatever you decide later)
+const KEY_TIER = "praxis_tier_v1";
+
+// ---------- intent constants (prevents typos across files) ----------
+export const INTENT_TODAY_PREFILL = "today_plan_prefill";
+export const INTENT_TODAY_STEP2 = "today_plan_step2";
 
 // ---------- utils ----------
 function nowISO() {
@@ -50,7 +57,7 @@ function normalizeKind(kind) {
     emergency: "emergency_open",
     emergency_open: "emergency_open",
 
-    // A3 back-compat aliases (older “end” kinds behave like the canonical kinds)
+    // A3 back-compat aliases
     calm_end: "calm",
     stop_urge_end: "stop_urge",
     move_forward_end: "move_forward",
@@ -61,26 +68,25 @@ function normalizeKind(kind) {
 /**
  * Stabilize credit is a day-stamp used as a soft permission (e.g. Today Plan Step 2 availability).
  * Timer parity rule: any meaningful stabilize/act timer interaction should grant credit.
- * Keep this inclusive (but only for relevant tools), and never throw.
  */
 function shouldGrantStabilizeCredit(entry) {
   const kind = normalizeKind(entry?.kind);
   if (!kind) return false;
 
-  // Canonical completions (existing behavior)
+  // Canonical completions
   if (kind === "calm") return true;
   if (kind === "stop_urge") return true;
   if (kind === "move_forward") return true;
 
-  // Stabilize / Act timers (start/stop/extend/end) should also count.
-  if (kind.startsWith("stop_urge_")) return true; // open/start/stop/extend/etc
-  if (kind.startsWith("move_forward_")) return true; // open/start/stop/extend/end/etc
+  // Timer interactions
+  if (kind.startsWith("stop_urge_")) return true;
+  if (kind.startsWith("move_forward_")) return true;
 
-  // Calm tool may log calm_start/calm_stop in some builds
+  // Calm tool may log calm_start/calm_stop
   if (kind === "calm_start" || kind === "calm_stop") return true;
 
-  // Today’s Plan parity: any step timer interaction counts
-  if (kind.startsWith("today_plan_step_")) return true; // step_start/step_stop/window_end/etc
+  // Today’s Plan parity
+  if (kind.startsWith("today_plan_step_")) return true;
   if (kind === "today_plan_continue_start") return true;
   if (kind === "today_plan_step") return true;
 
@@ -102,18 +108,16 @@ export function readLog() {
 export function appendLog(entry) {
   const e = entry && typeof entry === "object" ? { ...entry } : { kind: "unknown" };
 
-  // Normalize / guard
   e.kind = normalizeKind(e.kind);
   if (!e.when) e.when = nowISO();
 
-  // Persist log (cap)
   const log = readLog();
   log.unshift(e);
+
   try {
     localStorage.setItem(KEY_LOG, JSON.stringify(log.slice(0, 300)));
   } catch {}
 
-  // Grant stabilize credit (best-effort)
   if (shouldGrantStabilizeCredit(e)) {
     try {
       localStorage.setItem(KEY_STABILIZE_DAY, localDayStamp());
@@ -142,11 +146,24 @@ export function clearStabilizeCredit() {
   } catch {}
 }
 
+// ---------- tier ----------
+export function getTier() {
+  try {
+    const raw = localStorage.getItem(KEY_TIER);
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+export function isPro() {
+  return getTier() >= 1;
+}
+
 // ---------- intent handoff ----------
 /**
  * setNextIntent(intent, payload?)
- * - Back-compat: setNextIntent("today_plan_step2") still works.
- * - New: payload is any JSON-safe object.
+ * - payload is any JSON-safe object.
  */
 export function setNextIntent(intent, payload = null) {
   try {
@@ -176,7 +193,7 @@ export function consumeNextIntent(maxAgeMinutes = 30) {
 
     const parsed = JSON.parse(raw);
 
-    // Legacy string storage (defensive): if someone stored a raw intent string
+    // Legacy string storage
     if (typeof parsed === "string") return parsed;
 
     const intent = parsed?.intent ? String(parsed.intent) : "";
@@ -191,7 +208,6 @@ export function consumeNextIntent(maxAgeMinutes = 30) {
 
     return { intent, payload, ts };
   } catch {
-    // If parse fails, clear it so it doesn’t keep breaking.
     try {
       localStorage.removeItem(KEY_NEXT_INTENT);
     } catch {}
