@@ -1,4 +1,5 @@
-# GOVERNANCE.md  
+# GOVERNANCE.md
+
 ## Praxis — Emotional Integrity & Evolution Charter
 
 This document defines how Praxis is allowed to change.
@@ -17,10 +18,8 @@ If a change makes a user:
 - decide more
 - do more
 - perform better
-- understand more
-during distress
-
-…it must not ship.
+- understand more  
+during distress… it must not ship.
 
 ---
 
@@ -59,6 +58,12 @@ Rules:
 
 If closure is missing, the implementation is invalid.
 
+### Closure requirements checklist (ship gate)
+A flow is invalid unless it ends with:
+- A named closure state (`REST` / `RELIEF` / `READINESS`)
+- A primary next option that **reduces demand** (or ends cleanly)
+- No guilt, no push, no “keep going” pressure
+
 ---
 
 ## VERSIONING PHILOSOPHY
@@ -76,8 +81,6 @@ May only ship if:
 
 Major versions should be rare.
 
----
-
 ### MINOR (X.Y)
 Optional capabilities added without emotional demand.
 
@@ -91,8 +94,6 @@ Constraints:
 - Must not alter default flows
 - Must not add steps to existing tools
 - Must not change closure behavior
-
----
 
 ### PATCH (X.Y.Z)
 Bug fixes and safety improvements.
@@ -143,15 +144,14 @@ If growth is announced, it is broken.
 
 > **Praxis will never monetize dysregulation.**
 
-### Free Tier
-Must always include:
+### Free Tier must always include:
 - All Stabilize tools
 - All Act tools
 - Full closure quality
 - Unlimited use
 - No degraded language
 
-### Paid Features May Include:
+### Paid features may include:
 - Pattern reflection
 - Personal language adaptation
 - Long-horizon narrative context
@@ -175,4 +175,120 @@ Care is equal for all users.
 - Short (≤ 12 words preferred)
 - No praise, motivation, or future pressure
 
-Forbidden words (partial matches included):
+### Forbidden words (partial matches included)
+
+These are **ship-blockers** in user-facing copy unless explicitly quoted from the user.
+
+#### 1) Performance / praise / evaluation
+- good job
+- proud
+- success
+- win
+- crush
+- achieve / achievement
+- productive
+- progress
+- improving
+- better
+- best
+- mastery
+- optimize
+- maximize
+- level up
+
+#### 2) Pressure / coercion / urgency
+- do it now
+- right now
+- immediately
+- must
+- should
+- need to
+- have to
+- no excuses
+- don’t fail
+- prove
+- commit
+- promise
+- push through
+- keep going
+- don’t stop
+
+#### 3) Gamification / tracking pressure
+- streak
+- score
+- points
+- rank
+- badge
+- reward (when framed as performance)
+- milestone (when framed as progress pressure)
+
+#### 4) Comparative / improvement framing
+- more than yesterday
+- better than before
+- upgrade your life
+- become your best self
+- transform yourself
+- glow up
+
+#### 5) Manipulative emotional hooks
+- you owe it to yourself
+- don’t let this slip
+- you’ll regret it
+- what’s your excuse
+
+> Note: This list is intentionally strict. If something feels “motivational,” it’s probably not allowed.
+
+### Allowed language defaults (preferred)
+Use language that preserves agency:
+- “If you want…”
+- “Choose one…”
+- “Stop here…”
+- “That’s enough for now.”
+- “Return when ready.”
+- “Smallest next move.”
+
+---
+
+## UI GOVERNANCE
+
+- Default screen must remain simple.
+- Optional controls must be ignorable.
+- No dense forms in distressed flows.
+- No surprises (especially after a stop-early).
+- No UI that implies evaluation or “performance.”
+
+---
+
+## FAILURE & INTERRUPTION RULES
+
+A flow must still be “valid” if the user:
+- quits early
+- stops the timer early
+- closes the tab
+- returns later without context
+
+Rules:
+- Stop-early must produce closure (REST/RELIEF/READINESS)
+- No penalty language
+- No “try again” pressure
+
+---
+
+## CHANGE CONTROL
+
+Any change that touches:
+- wording
+- number of steps
+- lock/unlock logic
+- default navigation
+- closure behavior
+
+…must be reviewed against:
+- PRIME GOVERNANCE LAW
+- CLOSURE framework
+- FAT test
+- Forbidden words list
+
+If uncertain: ship nothing, or ship the smallest patch that removes pressure.
+
+---
