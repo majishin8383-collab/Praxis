@@ -7,7 +7,7 @@
 // js/zones/reflect.js (FULL REPLACEMENT)
 import { appendLog, readLog } from "../storage.js";
 
-const BUILD = "RF-11"; // Reflect v1.1 (governance-locked)
+const BUILD = "RF-12"; // Reflect v1.2 (clarity lens)
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -36,7 +36,6 @@ function safeAppendLog(entry) {
 }
 
 function sectionLabel(text) {
-  // Avoid "badge" UI to comply with GOVERNANCE.md
   return el("div", { class: "small", style: "opacity:.85;font-weight:800;letter-spacing:.02em;" }, [text]);
 }
 
@@ -50,22 +49,25 @@ function tile({ label, hint, dot = "dotGreen" }, onClick) {
   ]);
 }
 
-// ---- Reflect options (governance-locked) ----
+// ---- Options ----
 const LOOP_OPTIONS = [
   { id: "me", label: "Something I said / did", hint: "I keep replaying my side." },
   { id: "them", label: "Something they said / did", hint: "I’m stuck on what it meant." },
   { id: "decision", label: "A decision I’m avoiding", hint: "I don’t want to choose." },
-  { id: "tension", label: "Unnamed tension", hint: "I feel off, but can’t name it." },
+  { id: "future", label: "Fear of what happens next", hint: "My brain is predicting." },
+  { id: "tension", label: "Unnamed tension", hint: "I feel off, can’t name it." },
 ];
 
-const RELEASE_OPTIONS = [
-  { id: "decide", label: "I don’t need to decide today", hint: "Decision can wait.", dot: "dotGreen" },
-  { id: "respond", label: "I don’t need to respond today", hint: "No reply required now.", dot: "dotGreen" },
-  { id: "understand", label: "I don’t need to understand this today", hint: "Meaning can wait.", dot: "dotGreen" },
-  { id: "act", label: "I don’t need to act on this today", hint: "Action can wait.", dot: "dotGreen" },
+// Step 2 is now a clarity lens (not a “cop out”)
+const LENSES = [
+  { id: "fear", label: "What I’m afraid will happen", hint: "Name the fear. One sentence." },
+  { id: "need", label: "What I’m needing right now", hint: "What would steady me?" },
+  { id: "story", label: "What I’m telling myself", hint: "The sentence running the loop." },
+  { id: "control", label: "What I’m trying to control", hint: "Name the lever." },
+  { id: "next10", label: "What helps in the next 10 minutes", hint: "Small support. Not a plan." },
 ];
 
-// Optional “clarify spiral” (one-tap, ignorable)
+// Optional spiral clarify (still ignorable)
 const SPIRAL_ASKS = [
   { id: "recheck", label: "Re-check / re-read", hint: "Looking again to feel sure." },
   { id: "reach", label: "Reach out / message", hint: "Trying to close the loop." },
@@ -75,11 +77,10 @@ const SPIRAL_ASKS = [
 ];
 
 function loopLabel(id) {
-  return (LOOP_OPTIONS.find((x) => x.id === id)?.label || "Unnamed tension").toLowerCase();
+  const raw = LOOP_OPTIONS.find((x) => x.id === id)?.label || "Unnamed tension";
+  return String(raw).toLowerCase();
 }
-function releaseLabel(id) {
-  return (RELEASE_OPTIONS.find((x) => x.id === id)?.label || "I don’t need to decide today").replace(/\.$/, "");
-}
+
 function askLabel(id) {
   return SPIRAL_ASKS.find((x) => x.id === id)?.label || "Replay / analyze";
 }
@@ -87,34 +88,59 @@ function askLabel(id) {
 function lastLocked() {
   try {
     const log = readLog().slice(0, 250);
-    const last = log.find((e) => e && e.kind === "reflect_lock_v1" && typeof e.statement === "string");
+    const last = log.find((e) => e && e.kind === "reflect_lock_v2" && typeof e.reflection === "string");
     return last || null;
   } catch {
     return null;
   }
 }
 
+/**
+ * Governance-safe reflection builder:
+ * - One sentence of clarity
+ * - One sentence of agency (small, present tense)
+ * No praise, no pressure, no future demand.
+ */
+function buildReflection(loopId, lensId) {
+  const loop = loopLabel(loopId);
+
+  switch (lensId) {
+    case "fear":
+      return `Loop: ${loop}. Fear: it won’t resolve. Today I can still take one step.`;
+    case "need":
+      return `Loop: ${loop}. Need: steadiness. Next: lower intensity and continue.`;
+    case "story":
+      return `Loop: ${loop}. Story: “I have to know.” I can allow not-knowing today.`;
+    case "control":
+      return `Loop: ${loop}. Control: my next action. I can choose a smaller action.`;
+    case "next10":
+      return `Loop: ${loop}. Support: water, breath, and one small motion.`;
+    default:
+      return `Loop: ${loop}. Today I can take one step.`;
+  }
+}
+
 export function renderReflect() {
   const wrap = el("div", { class: "flowShell" });
 
-  // steps: 1 (name loop) -> 2 (release) -> 3 (closure)
+  // steps: 1 -> 2 -> 3(closure)
   const state = {
     step: 1,
     loop: null,
-    release: null,
-    statement: "",
-    closure: "REST", // default closure (lowest demand)
+    lens: null,
+    reflection: "",
+    closure: "REST",
     spiralAsk: null,
     spiralLine: "",
   };
 
-  safeAppendLog({ kind: "reflect_open_v1", when: nowISO(), build: BUILD });
+  safeAppendLog({ kind: "reflect_open_v2", when: nowISO(), build: BUILD });
 
   function header() {
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["Reflect"]),
-        el("p", { class: "p" }, ["Name it. Release demand. Close."]),
+        el("p", { class: "p" }, ["Name the loop. Get one clear line. Close."]),
         String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
       ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
@@ -129,45 +155,37 @@ export function renderReflect() {
     window.scrollTo(0, 0);
   }
 
-  function buildStatement() {
-    const l = loopLabel(state.loop);
-    const r = releaseLabel(state.release);
-    // Present tense, descriptive, short.
-    state.statement = `I’m looping on: ${l}. ${r}.`;
-    state.closure = "REST";
-  }
-
   function saveLock() {
     safeAppendLog({
-      kind: "reflect_lock_v1",
+      kind: "reflect_lock_v2",
       when: nowISO(),
       build: BUILD,
       loop: state.loop,
-      release: state.release,
-      statement: state.statement,
+      lens: state.lens,
+      reflection: state.reflection,
       closure: state.closure,
     });
   }
 
   function saveSpiralAsk() {
     safeAppendLog({
-      kind: "reflect_spiral_ask_v1",
+      kind: "reflect_spiral_ask_v2",
       when: nowISO(),
       build: BUILD,
       ask: state.spiralAsk,
       line: state.spiralLine,
       loop: state.loop,
-      release: state.release,
+      lens: state.lens,
     });
   }
 
   function lastCard() {
     const last = lastLocked();
-    if (!last?.statement) return null;
+    if (!last?.reflection) return null;
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Last reflection"),
-      el("p", { class: "p" }, [String(last.statement)]),
-      el("p", { class: "small", style: "margin-top:8px" }, ["No action required."]),
+      el("p", { class: "p" }, [String(last.reflection)]),
+      el("p", { class: "small", style: "margin-top:8px" }, ["Nothing else is required."]),
     ]);
   }
 
@@ -175,7 +193,7 @@ export function renderReflect() {
     return el("div", {}, [
       lastCard(),
       el("div", { class: "card cardPad" }, [
-        sectionLabel("Step 1 of 3"),
+        sectionLabel("Step 1 of 2"),
         el("h2", { class: "h2" }, ["What’s looping right now?"]),
         el("p", { class: "small" }, ["Pick what fits best."]),
         el("div", { class: "flowShell", style: "margin-top:10px" }, [
@@ -192,16 +210,17 @@ export function renderReflect() {
 
   function step2() {
     return el("div", { class: "card cardPad" }, [
-      sectionLabel("Step 2 of 3"),
-      el("h2", { class: "h2" }, ["What is not required right now?"]),
-      el("p", { class: "small" }, ["Choose one. No further thinking."]),
+      sectionLabel("Step 2 of 2"),
+      el("h2", { class: "h2" }, ["Pick a clarity lens"]),
+      el("p", { class: "small" }, ["One tap. No analysis."]),
       el("div", { class: "flowShell", style: "margin-top:10px" }, [
-        ...RELEASE_OPTIONS.map((o) =>
+        ...LENSES.map((l) =>
           tile(
-            { label: o.label, hint: o.hint, dot: o.dot },
+            { label: l.label, hint: l.hint, dot: "dotGreen" },
             () => {
-              state.release = o.id;
-              buildStatement();
+              state.lens = l.id;
+              state.reflection = buildReflection(state.loop, state.lens);
+              state.closure = "REST";
               saveLock();
               setStep(3);
             }
@@ -215,7 +234,6 @@ export function renderReflect() {
   }
 
   function clarifySpiralCard() {
-    // OPTIONAL, ignorable, no extra steps (still closure-safe).
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Optional"),
       el("h2", { class: "h2" }, ["Clarify the spiral"]),
@@ -234,21 +252,29 @@ export function renderReflect() {
         ),
       ]),
       state.spiralLine
-        ? el("div", { class: "card", style: "margin-top:10px;padding:12px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.04);" }, [
-            el("div", { class: "small", style: "opacity:.85;font-weight:800;" }, ["Reflection"]),
-            el("p", { class: "p", style: "margin-top:6px" }, [state.spiralLine]),
-          ])
+        ? el(
+            "div",
+            {
+              class: "card",
+              style:
+                "margin-top:10px;padding:12px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.04);",
+            },
+            [
+              el("div", { class: "small", style: "opacity:.85;font-weight:800;" }, ["Reflection"]),
+              el("p", { class: "p", style: "margin-top:6px" }, [state.spiralLine]),
+            ]
+          )
         : null,
     ].filter(Boolean));
   }
 
-  function closureCard() {
+  function closure() {
     return el("div", {}, [
       el("div", { class: "card cardPad" }, [
         sectionLabel("Closure"),
         el("h2", { class: "h2" }, [state.closure]),
-        el("p", { class: "p" }, [state.statement]),
-        el("p", { class: "small", style: "margin-top:8px" }, ["Nothing is required right now."]),
+        el("p", { class: "p" }, [state.reflection]),
+        el("p", { class: "small", style: "margin-top:8px" }, ["Nothing else is required right now."]),
         el("div", { class: "btnRow", style: "margin-top:10px" }, [
           el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, [
             "Back to Home",
@@ -261,8 +287,8 @@ export function renderReflect() {
               onClick: () => {
                 state.step = 1;
                 state.loop = null;
-                state.release = null;
-                state.statement = "";
+                state.lens = null;
+                state.reflection = "";
                 state.closure = "REST";
                 state.spiralAsk = null;
                 state.spiralLine = "";
@@ -274,7 +300,6 @@ export function renderReflect() {
           ),
         ]),
       ]),
-      // Optional add-on after closure (governance-safe)
       clarifySpiralCard(),
     ]);
   }
@@ -284,7 +309,7 @@ export function renderReflect() {
     wrap.appendChild(header());
     if (state.step === 1) wrap.appendChild(step1());
     else if (state.step === 2) wrap.appendChild(step2());
-    else wrap.appendChild(closureCard());
+    else wrap.appendChild(closure());
   }
 
   rerender();
