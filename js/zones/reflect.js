@@ -7,7 +7,7 @@
 // js/zones/reflect.js (FULL REPLACEMENT)
 import { appendLog, readLog } from "../storage.js";
 
-const BUILD = "RF-13"; // Reflect v1.3 (clarify inline)
+const BUILD = "RF-15"; // Closure has NO tiles
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -49,7 +49,7 @@ function tile({ label, hint, dot = "dotGreen" }, onClick) {
   ]);
 }
 
-// ---- Options ----
+// Step 1: what's looping
 const LOOP_OPTIONS = [
   { id: "me", label: "Something I said / did", hint: "I keep replaying my side." },
   { id: "them", label: "Something they said / did", hint: "I’m stuck on what it meant." },
@@ -67,7 +67,7 @@ const LENSES = [
   { id: "next10", label: "What helps in the next 10 minutes", hint: "Small support. Not a plan." },
 ];
 
-// Optional: spiral clarify (INLINE in closure)
+// Clarify screen: what is your brain asking for
 const SPIRAL_ASKS = [
   { id: "recheck", label: "Re-check / re-read", hint: "Looking again to feel sure." },
   { id: "reach", label: "Reach out / message", hint: "Trying to close the loop." },
@@ -85,58 +85,51 @@ function askLabel(id) {
   return SPIRAL_ASKS.find((x) => x.id === id)?.label || "Replay / analyze";
 }
 
-function lastLocked() {
-  try {
-    const log = readLog().slice(0, 250);
-    const last = log.find((e) => e && e.kind === "reflect_lock_v2" && typeof e.reflection === "string");
-    return last || null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Governance-safe reflection builder:
- * - One sentence of clarity
- * - One sentence of agency (small, present tense)
- * No praise, no pressure.
- */
+// Governance-safe reflection (descriptive, no praise)
 function buildReflection(loopId, lensId) {
   const loop = loopLabel(loopId);
 
   switch (lensId) {
     case "fear":
-      return `Loop: ${loop}. Fear: it won’t resolve. Today I can still take one step.`;
+      return `Loop: ${loop}. Fear is present. One step is allowed.`;
     case "need":
-      return `Loop: ${loop}. Need: steadiness. Next: lower intensity and continue.`;
+      return `Loop: ${loop}. Need is present. Lower intensity first.`;
     case "story":
-      return `Loop: ${loop}. Story: “I have to know.” I can allow not-knowing today.`;
+      return `Loop: ${loop}. Story is running. I can pause the story.`;
     case "control":
-      return `Loop: ${loop}. Control: my next action. I can choose a smaller action.`;
+      return `Loop: ${loop}. Control is limited. My next action is mine.`;
     case "next10":
-      return `Loop: ${loop}. Support: water, breath, and one small motion.`;
+      return `Loop: ${loop}. Next 10 minutes: water, breath, small motion.`;
     default:
-      return `Loop: ${loop}. Today I can take one step.`;
+      return `Loop: ${loop}. One step is allowed.`;
+  }
+}
+
+function lastLocked() {
+  try {
+    const log = readLog().slice(0, 250);
+    return log.find((e) => e && e.kind === "reflect_lock_v3" && typeof e.reflection === "string") || null;
+  } catch {
+    return null;
   }
 }
 
 export function renderReflect() {
   const wrap = el("div", { class: "flowShell" });
 
-  // steps: 1 -> 2 -> 3(closure)
+  // steps: 1 -> 2 -> 3(closure) -> 4(clarify) -> back to 3
   const state = {
     step: 1,
     loop: null,
     lens: null,
     reflection: "",
     closure: "REST",
-    // inline clarify
-    showClarify: false,
+
     spiralAsk: null,
     spiralLine: "",
   };
 
-  safeAppendLog({ kind: "reflect_open_v2", when: nowISO(), build: BUILD });
+  safeAppendLog({ kind: "reflect_open_v3", when: nowISO(), build: BUILD });
 
   function header() {
     return el("div", { class: "flowHeader" }, [
@@ -159,7 +152,7 @@ export function renderReflect() {
 
   function saveLock() {
     safeAppendLog({
-      kind: "reflect_lock_v2",
+      kind: "reflect_lock_v3",
       when: nowISO(),
       build: BUILD,
       loop: state.loop,
@@ -171,7 +164,7 @@ export function renderReflect() {
 
   function saveSpiralAsk() {
     safeAppendLog({
-      kind: "reflect_spiral_ask_v2",
+      kind: "reflect_spiral_ask_v3",
       when: nowISO(),
       build: BUILD,
       ask: state.spiralAsk,
@@ -223,8 +216,6 @@ export function renderReflect() {
               state.lens = l.id;
               state.reflection = buildReflection(state.loop, state.lens);
               state.closure = "REST";
-              // reset inline clarify state on new lock
-              state.showClarify = false;
               state.spiralAsk = null;
               state.spiralLine = "";
               saveLock();
@@ -239,51 +230,15 @@ export function renderReflect() {
     ]);
   }
 
-  function clarifyInline() {
-    if (!state.showClarify) return null;
-
-    return el("div", { style: "margin-top:10px" }, [
-      el("p", { class: "small" }, ["Pick what your brain is asking for."]),
-      el(
-        "div",
-        { class: "flowShell", style: "margin-top:10px" },
-        SPIRAL_ASKS.map((a) =>
-          tile(
-            { label: a.label, hint: a.hint, dot: "dotGreen" },
-            () => {
-              state.spiralAsk = a.id;
-              state.spiralLine = `My brain is asking for: ${askLabel(a.id)}. That is not required today.`;
-              saveSpiralAsk();
-              rerender();
-            }
-          )
-        )
-      ),
-      state.spiralLine
-        ? el(
-            "div",
-            {
-              class: "card",
-              style:
-                "margin-top:10px;padding:12px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.04);",
-            },
-            [
-              el("div", { class: "small", style: "opacity:.85;font-weight:800;" }, ["Clarified"]),
-              el("p", { class: "p", style: "margin-top:6px" }, [state.spiralLine]),
-            ]
-          )
-        : null,
-    ]);
-  }
-
+  // ✅ Closure: NO tiles. Only text + buttons.
   function closure() {
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Closure"),
       el("h2", { class: "h2" }, [state.closure]),
       el("p", { class: "p" }, [state.reflection]),
+      state.spiralLine ? el("p", { class: "small", style: "margin-top:10px;opacity:.9;" }, [state.spiralLine]) : null,
       el("p", { class: "small", style: "margin-top:8px" }, ["Nothing else is required right now."]),
 
-      // Inline controls (no extra “new tile” below the screen)
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
         el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, [
           "Back to Home",
@@ -299,7 +254,6 @@ export function renderReflect() {
               state.lens = null;
               state.reflection = "";
               state.closure = "REST";
-              state.showClarify = false;
               state.spiralAsk = null;
               state.spiralLine = "";
               rerender();
@@ -308,30 +262,42 @@ export function renderReflect() {
           },
           ["Reflect again"]
         ),
-        el(
-          "button",
-          {
-            class: "btn",
-            type: "button",
-            onClick: () => {
-              state.showClarify = !state.showClarify;
-              rerender();
-            },
-          },
-          [state.showClarify ? "Hide clarify" : "Clarify the spiral"]
-        ),
+        el("button", { class: "btn", type: "button", onClick: () => setStep(4) }, ["Clarify the spiral"]),
       ]),
+    ]);
+  }
 
-      // Inline expand/collapse area
-      clarifyInline(),
+  // Clarify screen: tiles live HERE (including re-check/re-read)
+  function clarifyScreen() {
+    return el("div", { class: "card cardPad" }, [
+      sectionLabel("Clarify"),
+      el("h2", { class: "h2" }, ["What is your brain asking for?"]),
+      el("p", { class: "small" }, ["Pick one. Then return to closure."]),
+      el(
+        "div",
+        { class: "flowShell", style: "margin-top:10px" },
+        SPIRAL_ASKS.map((a) =>
+          tile({ label: a.label, hint: a.hint, dot: "dotGreen" }, () => {
+            state.spiralAsk = a.id;
+            state.spiralLine = `My brain is asking for: ${askLabel(a.id)}. That is not required today.`;
+            saveSpiralAsk();
+            setStep(3); // return to closure
+          })
+        )
+      ),
+      el("div", { class: "btnRow", style: "margin-top:10px" }, [
+        el("button", { class: "btn", type: "button", onClick: () => setStep(3) }, ["Back"]),
+      ]),
     ]);
   }
 
   function rerender() {
     wrap.innerHTML = "";
     wrap.appendChild(header());
+
     if (state.step === 1) wrap.appendChild(step1());
     else if (state.step === 2) wrap.appendChild(step2());
+    else if (state.step === 4) wrap.appendChild(clarifyScreen());
     else wrap.appendChild(closure());
   }
 
