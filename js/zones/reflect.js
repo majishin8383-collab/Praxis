@@ -7,7 +7,8 @@
 // js/zones/reflect.js (FULL REPLACEMENT)
 import { appendLog, readLog, isPro } from "../storage.js";
 
-const BUILD = "RF-17"; // governance locked: tap-only, low demand, hard closure
+const BUILD = "RF-18"; // governance locked: tap-only, low demand, hard closure
+const UPGRADE_HASH = "#/upgrade"; // <-- change if your upgrade route differs
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -156,10 +157,9 @@ function buildDeepenLine(modeId, loopId, lensId) {
   const loop = loopLabel(loopId);
   const lens = String(lensId || "");
 
-  // Keep these neutral + usable; no claims about improvement.
   if (modeId === "pattern") {
     if (lens === "story") return `Pattern: story-loop around ${loop}.`;
-    if (lens === "predict") return `Pattern: future-scanning around ${loop}.`;
+    if (lens === "future") return `Pattern: future-scanning around ${loop}.`;
     return `Pattern: repeat-loop around ${loop}.`;
   }
 
@@ -171,7 +171,6 @@ function buildDeepenLine(modeId, loopId, lensId) {
     return "Value: steadiness over urgency—today.";
   }
 
-  // next
   return "Next step: water, breath, or a small reset—one only.";
 }
 
@@ -270,6 +269,16 @@ export function renderReflect() {
     });
   }
 
+  function saveUpgradeClick() {
+    safeAppendLog({
+      kind: "reflect_upgrade_click_v1",
+      when: nowISO(),
+      build: BUILD,
+      loop: state.loop,
+      lens: state.lens,
+    });
+  }
+
   function lastCard() {
     const last = lastLocked();
     if (!last?.mirror) return null;
@@ -335,13 +344,10 @@ export function renderReflect() {
           )
         ),
       ]),
-      el("div", { class: "btnRow" }, [
-        el("button", { class: "btn", type: "button", onClick: () => setStep(1) }, ["Back"]),
-      ]),
+      el("div", { class: "btnRow" }, [el("button", { class: "btn", type: "button", onClick: () => setStep(1) }, ["Back"])]),
     ]);
   }
 
-  // Closure: one primary state, low demand.
   function closure() {
     const lines = [state.mirror, state.ground, state.release].filter(Boolean);
 
@@ -352,13 +358,9 @@ export function renderReflect() {
         el("p", { class: i === 0 ? "p" : "small", style: i === 0 ? "" : "margin-top:6px;opacity:.9;" }, [t])
       ),
 
-      state.spiralLine
-        ? el("p", { class: "small", style: "margin-top:10px;opacity:.9;" }, [state.spiralLine])
-        : null,
+      state.spiralLine ? el("p", { class: "small", style: "margin-top:10px;opacity:.9;" }, [state.spiralLine]) : null,
 
-      state.deepenLine
-        ? el("p", { class: "small", style: "margin-top:10px;opacity:.9;" }, [state.deepenLine])
-        : null,
+      state.deepenLine ? el("p", { class: "small", style: "margin-top:10px;opacity:.9;" }, [state.deepenLine]) : null,
 
       el("p", { class: "small", style: "margin-top:8px" }, ["Nothing else is required right now."]),
 
@@ -405,15 +407,26 @@ export function renderReflect() {
           ["Reflect again"]
         ),
         el("button", { class: "btn", type: "button", onClick: () => setStep(4) }, ["Clarify the spiral"]),
-        // ✅ Pro-only deepening (optional, after closure is named)
+
+        // ✅ If Pro: deepen screen. If Free: upgrade CTA (this was missing).
         isPro()
           ? el("button", { class: "btn", type: "button", onClick: () => setStep(5) }, ["Deepen (Pro)"])
-          : null,
-      ].filter(Boolean)),
+          : el(
+              "button",
+              {
+                class: "btn",
+                type: "button",
+                onClick: () => {
+                  saveUpgradeClick();
+                  location.hash = UPGRADE_HASH;
+                },
+              },
+              ["Deepen (Upgrade)"]
+            ),
+      ]),
     ].filter(Boolean));
   }
 
-  // Clarify screen: tiles live HERE
   function clarifyScreen() {
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Clarify"),
@@ -438,7 +451,6 @@ export function renderReflect() {
     ]);
   }
 
-  // Pro-only deepen screen: tap one mode → generates one line → returns to closure
   function deepenScreen() {
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Deepen (Pro)"),
@@ -476,4 +488,4 @@ export function renderReflect() {
 
   rerender();
   return wrap;
-           }
+          }
