@@ -7,7 +7,7 @@
 // js/zones/reflect.js (FULL REPLACEMENT)
 import { appendLog, readLog, isPro } from "../storage.js";
 
-const BUILD = "RF-18"; // governance locked: tap-only, low demand, hard closure
+const BUILD = "RF-19"; // governance locked: tap-only, low demand, hard closure
 const UPGRADE_HASH = "#/upgrade"; // <-- change if your upgrade route differs
 
 function el(tag, attrs = {}, children = []) {
@@ -59,7 +59,7 @@ const LOOP_OPTIONS = [
   { id: "tension", label: "Unnamed tension", hint: "I feel off, can’t name it." },
 ];
 
-// Step 2: clarity lens (each yields a short, usable reflection + a gentle “release” line)
+// Step 2: clarity lens
 const LENSES = [
   { id: "fear", label: "What the fear is trying to prevent", hint: "Fear is a protector. Name it gently." },
   { id: "need", label: "What I’m needing right now", hint: "Need is present. Keep it small." },
@@ -77,7 +77,7 @@ const SPIRAL_ASKS = [
   { id: "predict", label: "Predict / catastrophize", hint: "Future scanning." },
 ];
 
-// Pro-only deepen modes (tap-only, one line, returns to closure)
+// Pro-only deepen modes
 const DEEPEN_MODES = [
   { id: "pattern", label: "Pattern", hint: "One descriptive pattern line." },
   { id: "boundary", label: "Boundary", hint: "One boundary line for today." },
@@ -91,7 +91,6 @@ function loopLabel(id) {
 }
 
 function askLine(id) {
-  // Governance-safe: descriptive, present tense, no pressure, no “should”.
   switch (id) {
     case "recheck":
       return "The mind is seeking certainty by checking again. Certainty can wait.";
@@ -108,7 +107,6 @@ function askLine(id) {
   }
 }
 
-// Governance-safe reflection: short, descriptive, non-evaluative.
 function buildReflection(loopId, lensId) {
   const loop = loopLabel(loopId);
 
@@ -152,7 +150,6 @@ function buildReflection(loopId, lensId) {
   }
 }
 
-// Pro deepen line (one sentence, descriptive, no evaluation)
 function buildDeepenLine(modeId, loopId, lensId) {
   const loop = loopLabel(loopId);
   const lens = String(lensId || "");
@@ -163,14 +160,8 @@ function buildDeepenLine(modeId, loopId, lensId) {
     return `Pattern: repeat-loop around ${loop}.`;
   }
 
-  if (modeId === "boundary") {
-    return "Boundary: no checking, no messaging, no proving—today.";
-  }
-
-  if (modeId === "value") {
-    return "Value: steadiness over urgency—today.";
-  }
-
+  if (modeId === "boundary") return "Boundary: no checking, no messaging, no proving—today.";
+  if (modeId === "value") return "Value: steadiness over urgency—today.";
   return "Next step: water, breath, or a small reset—one only.";
 }
 
@@ -186,8 +177,6 @@ function lastLocked() {
 export function renderReflect() {
   const wrap = el("div", { class: "flowShell" });
 
-  // steps: 1 -> 2 -> 3(closure) -> 4(clarify) -> back to 3
-  // optional Pro: 5(deepen) -> back to 3
   const state = {
     step: 1,
     loop: null,
@@ -202,7 +191,6 @@ export function renderReflect() {
     spiralAsk: null,
     spiralLine: "",
 
-    // pro-only
     deepenMode: null,
     deepenLine: "",
   };
@@ -269,9 +257,9 @@ export function renderReflect() {
     });
   }
 
-  function saveUpgradeClick() {
+  function savePreferenceClick() {
     safeAppendLog({
-      kind: "reflect_upgrade_click_v1",
+      kind: "reflect_more_clarity_click_v1",
       when: nowISO(),
       build: BUILD,
       loop: state.loop,
@@ -320,31 +308,29 @@ export function renderReflect() {
       el("p", { class: "small" }, ["One tap. Then we close."]),
       el("div", { class: "flowShell", style: "margin-top:10px" }, [
         ...LENSES.map((l) =>
-          tile(
-            { label: l.label, hint: l.hint, dot: "dotGreen" },
-            () => {
-              state.lens = l.id;
+          tile({ label: l.label, hint: l.hint, dot: "dotGreen" }, () => {
+            state.lens = l.id;
 
-              const r = buildReflection(state.loop, state.lens);
-              state.mirror = r.mirror;
-              state.ground = r.ground;
-              state.release = r.release;
+            const r = buildReflection(state.loop, state.lens);
+            state.mirror = r.mirror;
+            state.ground = r.ground;
+            state.release = r.release;
 
-              state.closure = "REST";
+            state.closure = "REST";
 
-              // Clear optional notes on new reflection
-              state.spiralAsk = null;
-              state.spiralLine = "";
-              state.deepenMode = null;
-              state.deepenLine = "";
+            state.spiralAsk = null;
+            state.spiralLine = "";
+            state.deepenMode = null;
+            state.deepenLine = "";
 
-              saveLock();
-              setStep(3);
-            }
-          )
+            saveLock();
+            setStep(3);
+          })
         ),
       ]),
-      el("div", { class: "btnRow" }, [el("button", { class: "btn", type: "button", onClick: () => setStep(1) }, ["Back"])]),
+      el("div", { class: "btnRow" }, [
+        el("button", { class: "btn", type: "button", onClick: () => setStep(1) }, ["Back"]),
+      ]),
     ]);
   }
 
@@ -359,12 +345,10 @@ export function renderReflect() {
       ),
 
       state.spiralLine ? el("p", { class: "small", style: "margin-top:10px;opacity:.9;" }, [state.spiralLine]) : null,
-
       state.deepenLine ? el("p", { class: "small", style: "margin-top:10px;opacity:.9;" }, [state.deepenLine]) : null,
 
       el("p", { class: "small", style: "margin-top:8px" }, ["Nothing else is required right now."]),
 
-      // Requested: closure includes re-check / re-read tile (single, specific, non-expanding)
       el("div", { style: "margin-top:10px" }, [
         tile(
           { label: "Re-check / re-read", hint: "If that pull is present, name it once.", dot: "dotGreen" },
@@ -378,6 +362,13 @@ export function renderReflect() {
           }
         ),
       ]),
+
+      // Preference-style optionality (not “upgrade” framing)
+      !isPro()
+        ? el("p", { class: "small", style: "margin-top:10px;opacity:.9;" }, [
+            "Preference: one more line of clarity is available.",
+          ])
+        : null,
 
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
         el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, [
@@ -408,22 +399,22 @@ export function renderReflect() {
         ),
         el("button", { class: "btn", type: "button", onClick: () => setStep(4) }, ["Clarify the spiral"]),
 
-        // ✅ If Pro: deepen screen. If Free: upgrade CTA (this was missing).
+        // Pro: deepen. Free: “More clarity” preference → upgrade page.
         isPro()
-          ? el("button", { class: "btn", type: "button", onClick: () => setStep(5) }, ["Deepen (Pro)"])
+          ? el("button", { class: "btn", type: "button", onClick: () => setStep(5) }, ["More clarity"])
           : el(
               "button",
               {
                 class: "btn",
                 type: "button",
                 onClick: () => {
-                  saveUpgradeClick();
+                  savePreferenceClick();
                   location.hash = UPGRADE_HASH;
                 },
               },
-              ["Deepen (Upgrade)"]
+              ["More clarity"]
             ),
-      ]),
+      ].filter(Boolean)),
     ].filter(Boolean));
   }
 
@@ -453,7 +444,7 @@ export function renderReflect() {
 
   function deepenScreen() {
     return el("div", { class: "card cardPad" }, [
-      sectionLabel("Deepen (Pro)"),
+      sectionLabel("More clarity"),
       el("h2", { class: "h2" }, ["One more line"]),
       el("p", { class: "small" }, ["Pick one. Then return to closure."]),
       el(
@@ -488,4 +479,4 @@ export function renderReflect() {
 
   rerender();
   return wrap;
-          }
+      }
