@@ -9,18 +9,9 @@ import { appendLog, readLog, isPro } from "../storage.js";
 
 const BUILD = "RF-18"; // governance locked: tap-only, low demand, hard closure
 
-// DEV NOTE:
-// - Leave "More clarity" UNLOCKED during development.
-// - BEFORE SHIP: set DEV_UNLOCK_MORE_CLARITY = false (then Pro gate applies).
+// DEV: keep More clarity visible during development.
+// PRE-SHIP: set to false to gate behind isPro().
 const DEV_UNLOCK_MORE_CLARITY = true;
-
-function canMoreClarity() {
-  try {
-    return DEV_UNLOCK_MORE_CLARITY || isPro();
-  } catch {
-    return DEV_UNLOCK_MORE_CLARITY;
-  }
-}
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -71,7 +62,7 @@ const LOOP_OPTIONS = [
   { id: "tension", label: "Unnamed tension", hint: "I feel off, can’t name it." },
 ];
 
-// Step 2: clarity lens
+// Step 2: clarity lens (each yields a short, usable reflection + a gentle “release” line)
 const LENSES = [
   { id: "fear", label: "What the fear is trying to prevent", hint: "Fear is a protector. Name it gently." },
   { id: "need", label: "What I’m needing right now", hint: "Need is present. Keep it small." },
@@ -90,7 +81,7 @@ const SPIRAL_ASKS = [
 ];
 
 // More clarity modes (tap-only, one line, returns to closure)
-const MORE_CLARITY_MODES = [
+const DEEPEN_MODES = [
   { id: "pattern", label: "Pattern", hint: "One descriptive pattern line." },
   { id: "boundary", label: "Boundary", hint: "One boundary line for today." },
   { id: "value", label: "Value", hint: "One value line that fits." },
@@ -103,7 +94,7 @@ function loopLabel(id) {
 }
 
 function askLine(id) {
-  // Descriptive, present tense, no pressure, no “should”.
+  // Governance-safe: descriptive, present tense, no pressure, no “should”.
   switch (id) {
     case "recheck":
       return "The mind is seeking certainty by checking again. Certainty can wait.";
@@ -120,7 +111,7 @@ function askLine(id) {
   }
 }
 
-// Short, descriptive, non-evaluative.
+// Governance-safe reflection: short, descriptive, non-evaluative.
 function buildReflection(loopId, lensId) {
   const loop = loopLabel(loopId);
 
@@ -164,14 +155,13 @@ function buildReflection(loopId, lensId) {
   }
 }
 
-// One sentence, descriptive, no evaluation.
-function buildMoreClarityLine(modeId, loopId, lensId) {
+// More clarity line (one sentence, descriptive, no evaluation)
+function buildDeepenLine(modeId, loopId, lensId) {
   const loop = loopLabel(loopId);
   const lens = String(lensId || "");
 
   if (modeId === "pattern") {
     if (lens === "story") return `Pattern: story-loop around ${loop}.`;
-    if (lens === "fear") return `Pattern: threat-scan around ${loop}.`;
     return `Pattern: repeat-loop around ${loop}.`;
   }
 
@@ -183,7 +173,6 @@ function buildMoreClarityLine(modeId, loopId, lensId) {
     return "Value: steadiness over urgency—today.";
   }
 
-  // next
   return "Next step: water, breath, or a small reset—one only.";
 }
 
@@ -209,14 +198,14 @@ export function renderReflect() {
     mirror: "",
     ground: "",
     release: "",
+
     closure: "REST",
 
     spiralAsk: null,
     spiralLine: "",
 
-    // optional more clarity
-    moreMode: null,
-    moreLine: "",
+    deepenMode: null,
+    deepenLine: "",
   };
 
   safeAppendLog({ kind: "reflect_open_v4", when: nowISO(), build: BUILD });
@@ -252,8 +241,8 @@ export function renderReflect() {
       release: state.release,
       closure: state.closure,
       spiralAsk: state.spiralAsk || null,
-      moreMode: state.moreMode || null,
-      moreLine: state.moreLine || "",
+      deepenMode: state.deepenMode || null,
+      deepenLine: state.deepenLine || "",
     });
   }
 
@@ -269,13 +258,13 @@ export function renderReflect() {
     });
   }
 
-  function saveMoreClarity() {
+  function saveDeepen() {
     safeAppendLog({
-      kind: "reflect_more_clarity_v1",
+      kind: "reflect_deepen_v1",
       when: nowISO(),
       build: BUILD,
-      mode: state.moreMode,
-      line: state.moreLine,
+      mode: state.deepenMode,
+      line: state.deepenLine,
       loop: state.loop,
       lens: state.lens,
     });
@@ -303,16 +292,14 @@ export function renderReflect() {
         sectionLabel("Step 1 of 2"),
         el("h2", { class: "h2" }, ["What’s looping right now?"]),
         el("p", { class: "small" }, ["Pick what fits best."]),
-        el(
-          "div",
-          { class: "flowShell", style: "margin-top:10px" },
-          LOOP_OPTIONS.map((o) =>
+        el("div", { class: "flowShell", style: "margin-top:10px" }, [
+          ...LOOP_OPTIONS.map((o) =>
             tile(o, () => {
               state.loop = o.id;
               setStep(2);
             })
-          )
-        ),
+          ),
+        ]),
       ]),
     ].filter(Boolean));
   }
@@ -322,10 +309,8 @@ export function renderReflect() {
       sectionLabel("Step 2 of 2"),
       el("h2", { class: "h2" }, ["What kind of clarity do you need?"]),
       el("p", { class: "small" }, ["One tap. Then we close."]),
-      el(
-        "div",
-        { class: "flowShell", style: "margin-top:10px" },
-        LENSES.map((l) =>
+      el("div", { class: "flowShell", style: "margin-top:10px" }, [
+        ...LENSES.map((l) =>
           tile({ label: l.label, hint: l.hint, dot: "dotGreen" }, () => {
             state.lens = l.id;
 
@@ -336,21 +321,22 @@ export function renderReflect() {
 
             state.closure = "REST";
 
-            // Clear optional notes on new reflection
             state.spiralAsk = null;
             state.spiralLine = "";
-            state.moreMode = null;
-            state.moreLine = "";
+            state.deepenMode = null;
+            state.deepenLine = "";
 
             saveLock();
             setStep(3);
           })
-        )
-      ),
-      el("div", { class: "btnRow" }, [
-        el("button", { class: "btn", type: "button", onClick: () => setStep(1) }, ["Back"]),
+        ),
       ]),
+      el("div", { class: "btnRow" }, [el("button", { class: "btn", type: "button", onClick: () => setStep(1) }, ["Back"])]),
     ]);
+  }
+
+  function canShowMoreClarity() {
+    return DEV_UNLOCK_MORE_CLARITY || isPro();
   }
 
   function closure() {
@@ -364,57 +350,54 @@ export function renderReflect() {
       ),
 
       state.spiralLine ? el("p", { class: "small", style: "margin-top:10px;opacity:.9;" }, [state.spiralLine]) : null,
-      state.moreLine ? el("p", { class: "small", style: "margin-top:10px;opacity:.9;" }, [state.moreLine]) : null,
+      state.deepenLine ? el("p", { class: "small", style: "margin-top:10px;opacity:.9;" }, [state.deepenLine]) : null,
 
       el("p", { class: "small", style: "margin-top:8px" }, ["Nothing else is required right now."]),
 
-      // Single specific tile (requested)
       el("div", { style: "margin-top:10px" }, [
-        tile({ label: "Re-check / re-read", hint: "If that pull is present, name it once.", dot: "dotGreen" }, () => {
-          state.spiralAsk = "recheck";
-          state.spiralLine = askLine("recheck");
-          saveSpiralAsk();
-          saveLock();
-          rerender();
-          window.scrollTo(0, 0);
-        }),
+        tile(
+          { label: "Re-check / re-read", hint: "If that pull is present, name it once.", dot: "dotGreen" },
+          () => {
+            state.spiralAsk = "recheck";
+            state.spiralLine = askLine("recheck");
+            saveSpiralAsk();
+            saveLock();
+            rerender();
+            window.scrollTo(0, 0);
+          }
+        ),
       ]),
 
-      el(
-        "div",
-        { class: "btnRow", style: "margin-top:10px" },
-        [
-          el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, [
-            "Back to Home",
-          ]),
-          el(
-            "button",
-            {
-              class: "btn",
-              type: "button",
-              onClick: () => {
-                state.step = 1;
-                state.loop = null;
-                state.lens = null;
-                state.mirror = "";
-                state.ground = "";
-                state.release = "";
-                state.closure = "REST";
-                state.spiralAsk = null;
-                state.spiralLine = "";
-                state.moreMode = null;
-                state.moreLine = "";
-                rerender();
-                window.scrollTo(0, 0);
-              },
+      el("div", { class: "btnRow", style: "margin-top:10px" }, [
+        el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, ["Back to Home"]),
+        el(
+          "button",
+          {
+            class: "btn",
+            type: "button",
+            onClick: () => {
+              state.step = 1;
+              state.loop = null;
+              state.lens = null;
+              state.mirror = "";
+              state.ground = "";
+              state.release = "";
+              state.closure = "REST";
+              state.spiralAsk = null;
+              state.spiralLine = "";
+              state.deepenMode = null;
+              state.deepenLine = "";
+              rerender();
+              window.scrollTo(0, 0);
             },
-            ["Reflect again"]
-          ),
-          el("button", { class: "btn", type: "button", onClick: () => setStep(4) }, ["Clarify the spiral"]),
-          // ✅ Preference-style (not “upgrade”), appears after closure is named
-          canMoreClarity() ? el("button", { class: "btn", type: "button", onClick: () => setStep(5) }, ["More clarity"]) : null,
-        ].filter(Boolean)
-      ),
+          },
+          ["Reflect again"]
+        ),
+        el("button", { class: "btn", type: "button", onClick: () => setStep(4) }, ["Clarify the spiral"]),
+        canShowMoreClarity()
+          ? el("button", { class: "btn", type: "button", onClick: () => setStep(5) }, ["More clarity"])
+          : null,
+      ].filter(Boolean)),
     ].filter(Boolean));
   }
 
@@ -442,7 +425,7 @@ export function renderReflect() {
     ]);
   }
 
-  function moreClarityScreen() {
+  function deepenScreen() {
     return el("div", { class: "card cardPad" }, [
       sectionLabel("More clarity"),
       el("h2", { class: "h2" }, ["One more line"]),
@@ -450,11 +433,11 @@ export function renderReflect() {
       el(
         "div",
         { class: "flowShell", style: "margin-top:10px" },
-        MORE_CLARITY_MODES.map((m) =>
+        DEEPEN_MODES.map((m) =>
           tile({ label: m.label, hint: m.hint, dot: "dotGreen" }, () => {
-            state.moreMode = m.id;
-            state.moreLine = buildMoreClarityLine(m.id, state.loop, state.lens);
-            saveMoreClarity();
+            state.deepenMode = m.id;
+            state.deepenLine = buildDeepenLine(m.id, state.loop, state.lens);
+            saveDeepen();
             saveLock();
             setStep(3);
           })
@@ -473,7 +456,7 @@ export function renderReflect() {
     if (state.step === 1) wrap.appendChild(step1());
     else if (state.step === 2) wrap.appendChild(step2());
     else if (state.step === 4) wrap.appendChild(clarifyScreen());
-    else if (state.step === 5) wrap.appendChild(moreClarityScreen());
+    else if (state.step === 5) wrap.appendChild(deepenScreen());
     else wrap.appendChild(closure());
   }
 
