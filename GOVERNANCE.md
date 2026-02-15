@@ -143,6 +143,7 @@ If growth is announced, it is broken.
 ## MONETIZATION RULES
 
 > **Praxis will never monetize dysregulation.**
+> Paid invites may appear only after closure states or on Home Tools panel; never during active distress tools.
 
 ### Free Tier must always include:
 - All Stabilize tools
