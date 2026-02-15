@@ -1,4 +1,4 @@
-/*! 
+/*!
  * Praxis
  * © 2025 Joseph Satmary. All rights reserved.
  * Public demo does not grant a license to use, copy, modify, or distribute.
@@ -156,8 +156,22 @@ export function getTier() {
     return 0;
   }
 }
+
 export function isPro() {
   return getTier() >= 1;
+}
+
+/**
+ * setTier(n)
+ * - n: 0=free, 1=pro, 2=plus...
+ * - best-effort only (no throws)
+ */
+export function setTier(n) {
+  try {
+    const v = Number(n);
+    const safe = Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0;
+    localStorage.setItem(KEY_TIER, String(safe));
+  } catch {}
 }
 
 // ---------- intent handoff ----------
