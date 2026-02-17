@@ -74,6 +74,9 @@ const routes = new Map([
 
   // Internal tool (kept)
   ["#/reflect", async () => (await import("./zones/reflect.js")).renderReflect()],
+
+  // More clarity (separate screen; future-proof for gating)
+  ["#/reflect/more", async () => (await import("./zones/reflectMoreClarity.js")).renderReflectMoreClarity()],
 ]);
 
 function getHash() {
