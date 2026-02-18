@@ -5,9 +5,9 @@
  */
 
 // js/zones/reflect.js (FULL REPLACEMENT)
-import { appendLog, readLog, isPro, setNextIntent } from "../storage.js";
+import { appendLog, readLog, isPro, setNextIntent, consumeNextIntent } from "../storage.js";
 
-const BUILD = "RF-19"; // governance locked: tap-only, low demand, hard closure
+const BUILD = "RF-20"; // governance locked: tap-only, low demand, hard closure
 
 // DEV: keep More clarity visible during development.
 // PRE-SHIP: set to false to gate behind isPro().
@@ -15,6 +15,8 @@ const DEV_UNLOCK_MORE_CLARITY = true;
 
 // One-time handoff intent to the dedicated More Clarity screen
 const INTENT_REFLECT_MORE_CLARITY = "reflect_more_clarity_v1";
+// One-time return intent from More Clarity back to Reflect
+const INTENT_REFLECT_MORE_CLARITY_RETURN = "reflect_more_clarity_return_v1";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -65,7 +67,7 @@ const LOOP_OPTIONS = [
   { id: "tension", label: "Unnamed tension", hint: "I feel off, can’t name it." },
 ];
 
-// Step 2: clarity lens (each yields a short, usable reflection + a gentle “release” line)
+// Step 2: clarity lens
 const LENSES = [
   { id: "fear", label: "What the fear is trying to prevent", hint: "Fear is a protector. Name it gently." },
   { id: "need", label: "What I’m needing right now", hint: "Need is present. Keep it small." },
@@ -89,7 +91,6 @@ function loopLabel(id) {
 }
 
 function askLine(id) {
-  // Governance-safe: descriptive, present tense, no pressure, no “should”.
   switch (id) {
     case "recheck":
       return "The mind is seeking certainty by checking again. Certainty can wait.";
@@ -106,47 +107,22 @@ function askLine(id) {
   }
 }
 
-// Governance-safe reflection: short, descriptive, non-evaluative.
 function buildReflection(loopId, lensId) {
   const loop = loopLabel(loopId);
 
   switch (lensId) {
     case "fear":
-      return {
-        mirror: `Loop: ${loop}. Fear is present.`,
-        ground: "Fear is trying to prevent pain.",
-        release: "One step is allowed. The rest can wait.",
-      };
+      return { mirror: `Loop: ${loop}. Fear is present.`, ground: "Fear is trying to prevent pain.", release: "One step is allowed. The rest can wait." };
     case "need":
-      return {
-        mirror: `Loop: ${loop}. Need is present.`,
-        ground: "Need can be small and still real.",
-        release: "Lower intensity first. One step is allowed.",
-      };
+      return { mirror: `Loop: ${loop}. Need is present.`, ground: "Need can be small and still real.", release: "Lower intensity first. One step is allowed." };
     case "story":
-      return {
-        mirror: `Loop: ${loop}. A story is running.`,
-        ground: "A story can run without being true.",
-        release: "I can pause the story for now.",
-      };
+      return { mirror: `Loop: ${loop}. A story is running.`, ground: "A story can run without being true.", release: "I can pause the story for now." };
     case "control":
-      return {
-        mirror: `Loop: ${loop}. Control is limited.`,
-        ground: "My next action is mine.",
-        release: "One lever is enough for today.",
-      };
+      return { mirror: `Loop: ${loop}. Control is limited.`, ground: "My next action is mine.", release: "One lever is enough for today." };
     case "next10":
-      return {
-        mirror: `Loop: ${loop}. The next 10 minutes matter.`,
-        ground: "Support is allowed: water, breath, small motion.",
-        release: "The rest can wait.",
-      };
+      return { mirror: `Loop: ${loop}. The next 10 minutes matter.`, ground: "Support is allowed: water, breath, small motion.", release: "The rest can wait." };
     default:
-      return {
-        mirror: `Loop: ${loop}.`,
-        ground: "One step is allowed.",
-        release: "The rest can wait.",
-      };
+      return { mirror: `Loop: ${loop}.`, ground: "One step is allowed.", release: "The rest can wait." };
   }
 }
 
@@ -163,7 +139,7 @@ export function renderReflect() {
   const wrap = el("div", { class: "flowShell" });
 
   // steps: 1 -> 2 -> 3(closure) -> 4(clarify) -> back to 3
-  // More clarity is now its OWN ROUTE: #/reflect/more
+  // More clarity is its own route: #/reflect/more
   const state = {
     step: 1,
     loop: null,
@@ -177,9 +153,43 @@ export function renderReflect() {
 
     spiralAsk: null,
     spiralLine: "",
+
+    // optional (returned from /reflect/more)
+    deepenMode: null,
+    deepenLine: "",
   };
 
   safeAppendLog({ kind: "reflect_open_v4", when: nowISO(), build: BUILD });
+
+  // ✅ Consume one-time return from More Clarity (if present)
+  (function consumeReturn() {
+    const intent = consumeNextIntent();
+    if (!intent || typeof intent !== "object") return;
+    if (String(intent.intent || "") !== INTENT_REFLECT_MORE_CLARITY_RETURN) return;
+
+    const p = intent.payload && typeof intent.payload === "object" ? intent.payload : null;
+    if (!p) return;
+
+    const line = typeof p.deepenLine === "string" ? p.deepenLine.trim() : "";
+    const mode = typeof p.deepenMode === "string" ? p.deepenMode : null;
+
+    // Only accept if it’s actually present
+    if (!line) return;
+
+    state.deepenLine = line;
+    state.deepenMode = mode;
+
+    // If the user is returning, we want to land in closure.
+    state.step = 3;
+
+    safeAppendLog({
+      kind: "reflect_more_clarity_return_v1",
+      when: nowISO(),
+      build: BUILD,
+      deepenMode: mode,
+      deepenLine: line,
+    });
+  })();
 
   function header() {
     return el("div", { class: "flowHeader" }, [
@@ -212,6 +222,9 @@ export function renderReflect() {
       release: state.release,
       closure: state.closure,
       spiralAsk: state.spiralAsk || null,
+      spiralLine: state.spiralLine || "",
+      deepenMode: state.deepenMode || null,
+      deepenLine: state.deepenLine || "",
     });
   }
 
@@ -232,14 +245,16 @@ export function renderReflect() {
     if (!last?.mirror) return null;
 
     const lines = [String(last.mirror), String(last.ground || ""), String(last.release || "")].filter(Boolean);
+    const deepen = typeof last.deepenLine === "string" ? last.deepenLine.trim() : "";
 
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Last reflection"),
       ...lines.map((t, i) =>
         el("p", { class: i === 0 ? "p" : "small", style: i === 0 ? "" : "margin-top:6px;opacity:.9;" }, [t])
       ),
+      deepen ? el("p", { class: "small", style: "margin-top:10px;opacity:.9;" }, [deepen]) : null,
       el("p", { class: "small", style: "margin-top:8px" }, ["Nothing else is required right now."]),
-    ]);
+    ].filter(Boolean));
   }
 
   function step1() {
@@ -281,12 +296,18 @@ export function renderReflect() {
             state.spiralAsk = null;
             state.spiralLine = "";
 
+            // clear any prior deepen line when a new reflection is generated
+            state.deepenMode = null;
+            state.deepenLine = "";
+
             saveLock();
             setStep(3);
           })
         ),
       ]),
-      el("div", { class: "btnRow" }, [el("button", { class: "btn", type: "button", onClick: () => setStep(1) }, ["Back"])]),
+      el("div", { class: "btnRow" }, [
+        el("button", { class: "btn", type: "button", onClick: () => setStep(1) }, ["Back"]),
+      ]),
     ]);
   }
 
@@ -312,7 +333,6 @@ export function renderReflect() {
     location.hash = "#/reflect/more";
   }
 
-  // Closure: one primary state, low demand.
   function closure() {
     const lines = [state.mirror, state.ground, state.release].filter(Boolean);
 
@@ -324,6 +344,7 @@ export function renderReflect() {
       ),
 
       state.spiralLine ? el("p", { class: "small", style: "margin-top:10px;opacity:.9;" }, [state.spiralLine]) : null,
+      state.deepenLine ? el("p", { class: "small", style: "margin-top:10px;opacity:.9;" }, [state.deepenLine]) : null,
 
       el("p", { class: "small", style: "margin-top:8px" }, ["Nothing else is required right now."]),
 
@@ -358,6 +379,8 @@ export function renderReflect() {
               state.closure = "REST";
               state.spiralAsk = null;
               state.spiralLine = "";
+              state.deepenMode = null;
+              state.deepenLine = "";
               rerender();
               window.scrollTo(0, 0);
             },
@@ -372,7 +395,6 @@ export function renderReflect() {
     ].filter(Boolean));
   }
 
-  // Clarify screen: tiles live HERE
   function clarifyScreen() {
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Clarify"),
