@@ -5,17 +5,12 @@
  */
 
 // js/zones/reflectMoreClarity.js (NEW FILE)
-import { appendLog, consumeNextIntent, isPro } from "../storage.js";
+import { appendLog, consumeNextIntent, setNextIntent } from "../storage.js";
 
 const BUILD = "RFM-01";
 
-// DEV: keep More clarity usable during development.
-// PRE-SHIP: set to false to gate behind isPro().
-const DEV_UNLOCK_MORE_CLARITY = true;
-
-// (Optional) If reflect.js passes context via setNextIntent(), we can read it here.
-// Not required for function, but future-proof.
 const INTENT_REFLECT_MORE_CLARITY = "reflect_more_clarity_v1";
+const INTENT_REFLECT_MORE_CLARITY_RETURN = "reflect_more_clarity_return_v1";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -57,7 +52,7 @@ function tile({ label, hint, dot = "dotGreen" }, onClick) {
   ]);
 }
 
-// More clarity modes (tap-only, one line)
+// Tap-only modes
 const MODES = [
   { id: "pattern", label: "Pattern", hint: "One descriptive pattern line." },
   { id: "boundary", label: "Boundary", hint: "One boundary line for today." },
@@ -65,16 +60,17 @@ const MODES = [
   { id: "next", label: "Next smallest step", hint: "One tiny step line." },
 ];
 
-function canUseMoreClarity() {
-  return DEV_UNLOCK_MORE_CLARITY || isPro();
+function loopLabelFromPayload(loopId) {
+  // We keep this screen neutral. Reflect already knows the “human label.”
+  // If missing, we still work.
+  const raw = String(loopId || "").trim();
+  return raw ? raw : "tension";
 }
 
-// Governance-safe: one sentence, descriptive, no evaluation, no “should”.
-function buildLine(modeId, ctx) {
-  const loop = String(ctx?.loopLabel || "").trim();
-  const loopPart = loop ? ` around ${loop}` : "";
+function buildLine(modeId, loopId) {
+  const loop = loopLabelFromPayload(loopId);
 
-  if (modeId === "pattern") return `Pattern: repeat-loop${loopPart}.`;
+  if (modeId === "pattern") return `Pattern: repeat-loop around ${loop}.`;
   if (modeId === "boundary") return "Boundary: no checking, no messaging, no proving—today.";
   if (modeId === "value") return "Value: steadiness over urgency—today.";
   return "Next step: water, breath, or a small reset—one only.";
@@ -83,32 +79,25 @@ function buildLine(modeId, ctx) {
 export function renderReflectMoreClarity() {
   const wrap = el("div", { class: "flowShell" });
 
-  // Read context if reflect.js handed it off (optional).
-  const intent = consumeNextIntent?.() || null;
-  let ctx = { loopLabel: "" };
+  // read handoff from Reflect (one-time)
+  const intent = consumeNextIntent();
+  const payload =
+    intent && typeof intent === "object" && String(intent.intent || "") === INTENT_REFLECT_MORE_CLARITY
+      ? intent.payload && typeof intent.payload === "object"
+        ? intent.payload
+        : null
+      : null;
 
-  if (intent && typeof intent === "object" && intent.intent === INTENT_REFLECT_MORE_CLARITY) {
-    const p = intent.payload && typeof intent.payload === "object" ? intent.payload : null;
-    const loopRaw = typeof p?.loop === "string" ? p.loop : null;
-    // loop from reflect.js is an id; we keep it generic here to avoid coupling.
-    // If you later want perfect labels, we can pass loopLabel from reflect.js.
-    ctx.loopLabel = typeof p?.loopLabel === "string" ? p.loopLabel : (loopRaw ? String(loopRaw) : "");
-  }
+  const loop = payload?.loop || null;
+  const lens = payload?.lens || null;
 
   safeAppendLog({ kind: "reflect_more_open_v1", when: nowISO(), build: BUILD });
-
-  const state = {
-    step: "pick", // pick | closure
-    mode: null,
-    line: "",
-    closure: "REST",
-  };
 
   function header() {
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["More clarity"]),
-        el("p", { class: "p" }, ["One tap. One line. Close."]),
+        el("p", { class: "p" }, ["Pick one. Get one line. Return to closure."]),
         String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
       ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
@@ -117,91 +106,50 @@ export function renderReflectMoreClarity() {
     ]);
   }
 
-  function pickScreen() {
-    // If gated, we keep demand low and return agency.
-    if (!canUseMoreClarity()) {
-      return el("div", { class: "card cardPad" }, [
-        sectionLabel("Closure"),
-        el("h2", { class: "h2" }, ["REST"]),
-        el("p", { class: "p" }, ["More clarity is not available in this version."]),
-        el("p", { class: "small", style: "margin-top:8px" }, ["Nothing else is required right now."]),
-        el("div", { class: "btnRow", style: "margin-top:10px" }, [
-          el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/reflect") }, [
-            "Back to Reflect",
-          ]),
-          el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Back to Home"]),
-        ]),
-      ]);
-    }
+  function returnToReflect(modeId, line) {
+    // one-time return payload
+    try {
+      setNextIntent(INTENT_REFLECT_MORE_CLARITY_RETURN, {
+        deepenMode: modeId,
+        deepenLine: line,
+      });
+    } catch {}
 
+    safeAppendLog({
+      kind: "reflect_more_pick_v1",
+      when: nowISO(),
+      build: BUILD,
+      mode: modeId,
+      line,
+      loop,
+      lens,
+    });
+
+    location.hash = "#/reflect";
+  }
+
+  function body() {
     return el("div", { class: "card cardPad" }, [
-      sectionLabel("Pick one"),
-      el("h2", { class: "h2" }, ["What kind of clarity fits?"]),
-      el("p", { class: "small" }, ["Tap once. No analysis."]),
+      sectionLabel("Optional"),
+      el("h2", { class: "h2" }, ["One more line"]),
+      el("p", { class: "small" }, ["Tap one. Nothing else."]),
       el(
         "div",
         { class: "flowShell", style: "margin-top:10px" },
         MODES.map((m) =>
           tile({ label: m.label, hint: m.hint, dot: "dotGreen" }, () => {
-            state.mode = m.id;
-            state.line = buildLine(m.id, ctx);
-
-            safeAppendLog({
-              kind: "reflect_more_lock_v1",
-              when: nowISO(),
-              build: BUILD,
-              mode: state.mode,
-              line: state.line,
-            });
-
-            state.step = "closure";
-            rerender();
-            window.scrollTo(0, 0);
+            const line = buildLine(m.id, loop);
+            returnToReflect(m.id, line);
           })
         )
       ),
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
-        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/reflect") }, ["Back"]),
+        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/reflect") }, ["Back to Reflect"]),
       ]),
     ]);
   }
 
-  function closureScreen() {
-    return el("div", { class: "card cardPad" }, [
-      sectionLabel("Closure"),
-      el("h2", { class: "h2" }, [state.closure]),
-      el("p", { class: "p" }, [state.line || "One line is allowed."]),
-      el("p", { class: "small", style: "margin-top:8px" }, ["Nothing else is required right now."]),
-      el("div", { class: "btnRow", style: "margin-top:10px" }, [
-        el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/reflect") }, [
-          "Back to Reflect",
-        ]),
-        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Back to Home"]),
-        el(
-          "button",
-          {
-            class: "btn",
-            type: "button",
-            onClick: () => {
-              state.step = "pick";
-              state.mode = null;
-              state.line = "";
-              rerender();
-              window.scrollTo(0, 0);
-            },
-          },
-          ["More clarity again"]
-        ),
-      ]),
-    ]);
-  }
-
-  function rerender() {
-    wrap.innerHTML = "";
-    wrap.appendChild(header());
-    wrap.appendChild(state.step === "closure" ? closureScreen() : pickScreen());
-  }
-
-  rerender();
+  wrap.appendChild(header());
+  wrap.appendChild(body());
   return wrap;
 }
