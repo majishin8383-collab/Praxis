@@ -72,10 +72,8 @@ const routes = new Map([
   ["#/green/move", async () => (await import("./zones/green/moveForward.js")).renderMoveForward()],
   ["#/green/today", async () => (await import("./zones/green/todayPlan.js")).renderTodayPlan()],
 
-  // Internal tool (kept)
+  // Reflect
   ["#/reflect", async () => (await import("./zones/reflect.js")).renderReflect()],
-
-  // More clarity (separate screen; future-proof for gating)
   ["#/reflect/more", async () => (await import("./zones/reflectMoreClarity.js")).renderReflectMoreClarity()],
 ]);
 
