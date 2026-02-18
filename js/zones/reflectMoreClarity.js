@@ -4,10 +4,10 @@
  * Public demo does not grant a license to use, copy, modify, or distribute.
  */
 
-// js/zones/reflectMoreClarity.js (NEW FILE)
+// js/zones/reflectMoreClarity.js (FULL REPLACEMENT)
 import { appendLog, consumeNextIntent, setNextIntent } from "../storage.js";
 
-const BUILD = "RFM-01";
+const BUILD = "RFM-02";
 
 const INTENT_REFLECT_MORE_CLARITY = "reflect_more_clarity_v1";
 const INTENT_REFLECT_MORE_CLARITY_RETURN = "reflect_more_clarity_return_v1";
@@ -61,8 +61,6 @@ const MODES = [
 ];
 
 function loopLabelFromPayload(loopId) {
-  // We keep this screen neutral. Reflect already knows the “human label.”
-  // If missing, we still work.
   const raw = String(loopId || "").trim();
   return raw ? raw : "tension";
 }
@@ -96,8 +94,8 @@ export function renderReflectMoreClarity() {
   function header() {
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
-        el("h1", { class: "h1" }, ["More clarity"]),
-        el("p", { class: "p" }, ["Pick one. Get one line. Return to closure."]),
+        el("h1", { class: "h1" }, ["One more line"]),
+        el("p", { class: "p" }, ["Optional. Pick one. Return to closure."]),
         String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
       ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
@@ -107,7 +105,6 @@ export function renderReflectMoreClarity() {
   }
 
   function returnToReflect(modeId, line) {
-    // one-time return payload
     try {
       setNextIntent(INTENT_REFLECT_MORE_CLARITY_RETURN, {
         deepenMode: modeId,
