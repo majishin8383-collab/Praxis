@@ -1,13 +1,8 @@
-/*!
- * Praxis
- * © 2025 Joseph Satmary. All rights reserved.
- * Public demo does not grant a license to use, copy, modify, or distribute.
- */
-
 // js/zones/reflect.js (FULL REPLACEMENT)
 import { appendLog, readLog, isPro, setNextIntent, consumeNextIntent } from "../storage.js";
+import { getReflectPatternNote } from "../memory.js";
 
-const BUILD = "RF-20"; // governance locked: tap-only, low demand, hard closure
+const BUILD = "RF-21"; // governance locked: tap-only, low demand, hard closure
 
 // DEV: keep More clarity visible during development.
 // PRE-SHIP: set to false to gate behind isPro().
@@ -61,7 +56,7 @@ function tile({ label, hint, dot = "dotGreen" }, onClick) {
 // Step 1: what's looping
 const LOOP_OPTIONS = [
   { id: "me", label: "Something I said / did", hint: "I keep replaying my side." },
-  { id: "them", label: "Something they said / did", hint: "I’m stuck on what it meant." },
+  { id: "them", label: "Something someone said / did", hint: "I’m stuck on what it meant." }, // softened
   { id: "decision", label: "A decision I’m avoiding", hint: "I don’t want to choose." },
   { id: "future", label: "Fear of what happens next", hint: "My brain is predicting." },
   { id: "tension", label: "Unnamed tension", hint: "I feel off, can’t name it." },
@@ -79,7 +74,7 @@ const LENSES = [
 // Clarify: what the spiral is asking for
 const SPIRAL_ASKS = [
   { id: "recheck", label: "Re-check / re-read", hint: "Looking again to feel sure." },
-  { id: "reach", label: "Reach out / message", hint: "Trying to close the loop." },
+  { id: "reach", label: "Reach out / contact", hint: "Trying to close the loop." }, // softened
   { id: "replay", label: "Replay / analyze", hint: "Searching for meaning." },
   { id: "fix", label: "Fix / explain", hint: "Trying to repair it." },
   { id: "predict", label: "Predict / catastrophize", hint: "Future scanning." },
@@ -138,8 +133,6 @@ function lastLocked() {
 export function renderReflect() {
   const wrap = el("div", { class: "flowShell" });
 
-  // steps: 1 -> 2 -> 3(closure) -> 4(clarify) -> back to 3
-  // More clarity is its own route: #/reflect/more
   const state = {
     step: 1,
     loop: null,
@@ -173,13 +166,12 @@ export function renderReflect() {
     const line = typeof p.deepenLine === "string" ? p.deepenLine.trim() : "";
     const mode = typeof p.deepenMode === "string" ? p.deepenMode : null;
 
-    // Only accept if it’s actually present
     if (!line) return;
 
     state.deepenLine = line;
     state.deepenMode = mode;
 
-    // If the user is returning, we want to land in closure.
+    // return lands in closure
     state.step = 3;
 
     safeAppendLog({
@@ -316,7 +308,6 @@ export function renderReflect() {
   }
 
   function goMoreClarity() {
-    // Handoff current context to the dedicated screen (future-proof gating + separate file).
     try {
       setNextIntent(INTENT_REFLECT_MORE_CLARITY, {
         from: "reflect",
@@ -333,8 +324,18 @@ export function renderReflect() {
     location.hash = "#/reflect/more";
   }
 
+  function proPatternNote() {
+    if (!isPro()) return "";
+    try {
+      return getReflectPatternNote({ loopId: state.loop, lensId: state.lens, askId: state.spiralAsk });
+    } catch {
+      return "";
+    }
+  }
+
   function closure() {
     const lines = [state.mirror, state.ground, state.release].filter(Boolean);
+    const pattern = proPatternNote();
 
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Closure"),
@@ -345,6 +346,8 @@ export function renderReflect() {
 
       state.spiralLine ? el("p", { class: "small", style: "margin-top:10px;opacity:.9;" }, [state.spiralLine]) : null,
       state.deepenLine ? el("p", { class: "small", style: "margin-top:10px;opacity:.9;" }, [state.deepenLine]) : null,
+
+      pattern ? el("p", { class: "small", style: "margin-top:10px;opacity:.9;" }, [pattern]) : null,
 
       el("p", { class: "small", style: "margin-top:8px" }, ["Nothing else is required right now."]),
 
@@ -431,4 +434,4 @@ export function renderReflect() {
 
   rerender();
   return wrap;
-        }
+          }
