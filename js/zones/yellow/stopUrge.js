@@ -2,7 +2,7 @@
 import { appendLog, setNextIntent } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "SU-13";
+const BUILD = "SU-14";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -38,15 +38,17 @@ function copyToClipboard(text) {
   }
 }
 
+// Neutralized: usable for ANY “urge to send/post/reply/buy/check/argue”
+// Still feels specific, but not relationship-coded.
 const SCRIPT_SETS = [
   {
     id: "neutral",
     title: "Neutral (later)",
     desc: "Short. Calm. No fuel.",
     variants: [
-      "Got your message. I’m not available right now. I’ll reply later.",
-      "I saw this. I can’t talk right now. I’ll respond later.",
-      "I’m tied up right now. I’ll get back to you later.",
+      "I saw this. I’m not available right now. I’ll respond later.",
+      "I can’t get into this right now. I’ll reply later.",
+      "I’m tied up right now. I’ll follow up later.",
     ],
   },
   {
@@ -54,19 +56,19 @@ const SCRIPT_SETS = [
     title: "Boundary",
     desc: "Clear. No debate.",
     variants: [
-      "I’m taking space and won’t be engaging. Please respect that.",
-      "I’m not available for this conversation. Please stop contacting me about it.",
+      "I’m taking space and won’t be engaging right now.",
+      "I’m not available for this conversation. Please stop pressing it.",
       "I’m stepping back. I won’t respond further right now.",
     ],
   },
   {
     id: "logistics",
-    title: "Logistics only",
+    title: "Practical only",
     desc: "Keep it practical.",
     variants: [
-      "I can handle logistics. I’m not discussing anything else.",
-      "I’ll respond only to practical logistics. I’m not discussing the relationship.",
-      "If this is about logistics, I can reply. Otherwise I’m not engaging.",
+      "I can handle practical details. I’m not discussing anything else.",
+      "If this is about a practical detail, I can respond. Otherwise I’m not engaging.",
+      "I can reply to logistics. I’m not available for the rest.",
     ],
   },
   {
@@ -76,7 +78,7 @@ const SCRIPT_SETS = [
     variants: [
       "I’m not going to argue. I’m stepping away for now.",
       "This isn’t productive. I’m going to pause and revisit later.",
-      "I’m going to end this conversation now.",
+      "I’m ending this conversation now.",
     ],
   },
 ];
@@ -194,7 +196,6 @@ export function renderStopUrge() {
     });
 
     if (outcome === "passed") {
-      // Option B: after Stabilize/Act tool, Today’s Plan focuses Step 2
       try {
         setNextIntent("today_plan_prefill", {
           from: "stop_urge",
@@ -369,4 +370,4 @@ export function renderStopUrge() {
 
   rerender();
   return wrap;
-}
+  }
