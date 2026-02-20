@@ -40,9 +40,7 @@ function errorView(err, hash) {
         el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, ["Go Home"]),
         el("button", { class: "btn", type: "button", onClick: () => location.reload() }, ["Reload"]),
       ]),
-      el("p", { class: "small", style: "margin-top:10px" }, [
-        "If this keeps happening, a file path or export name is wrong.",
-      ]),
+      el("p", { class: "small", style: "margin-top:10px" }, ["If this keeps happening, a file path or export name is wrong."]),
     ].filter(Boolean)),
   ]);
 }
@@ -75,6 +73,9 @@ const routes = new Map([
   // Reflect
   ["#/reflect", async () => (await import("./zones/reflect.js")).renderReflect()],
   ["#/reflect/more", async () => (await import("./zones/reflectMoreClarity.js")).renderReflectMoreClarity()],
+
+  // Pro
+  ["#/pro/brain", async () => (await import("./pro/brain.js")).renderProBrain()],
 ]);
 
 function getHash() {
