@@ -7,10 +7,12 @@
 // js/zones/reflectMoreClarity.js (FULL REPLACEMENT)
 import { appendLog, consumeNextIntent, setNextIntent } from "../storage.js";
 
-const BUILD = "RFM-02";
+const BUILD = "RFM-03";
 
 const INTENT_REFLECT_MORE_CLARITY = "reflect_more_clarity_v1";
-const INTENT_REFLECT_MORE_CLARITY_RETURN = "reflect_more_clarity_return_v1";
+
+// ✅ Pro Brain handoff (one-time)
+const INTENT_PRO_BRAIN_CONTEXT = "pro_brain_context_v1";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -91,11 +93,27 @@ export function renderReflectMoreClarity() {
 
   safeAppendLog({ kind: "reflect_more_open_v1", when: nowISO(), build: BUILD });
 
+  function goProBrain(extra = {}) {
+    // IMPORTANT:
+    // We do NOT set the "return-to-reflect" intent here, because KEY_NEXT_INTENT is one-slot.
+    // Pro Brain will decide whether to send the user back to Reflect (and set that intent then).
+    try {
+      setNextIntent(INTENT_PRO_BRAIN_CONTEXT, {
+        from: "reflect_more",
+        returnTo: "#/reflect",
+        loop,
+        lens,
+        ...extra,
+      });
+    } catch {}
+    location.hash = "#/pro/brain";
+  }
+
   function header() {
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["One more line"]),
-        el("p", { class: "p" }, ["Optional. Pick one. Return to closure."]),
+        el("p", { class: "p" }, ["Optional. Pick one. Continue."]),
         String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
       ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
@@ -104,13 +122,8 @@ export function renderReflectMoreClarity() {
     ]);
   }
 
-  function returnToReflect(modeId, line) {
-    try {
-      setNextIntent(INTENT_REFLECT_MORE_CLARITY_RETURN, {
-        deepenMode: modeId,
-        deepenLine: line,
-      });
-    } catch {}
+  function pick(modeId) {
+    const line = buildLine(modeId, loop);
 
     safeAppendLog({
       kind: "reflect_more_pick_v1",
@@ -122,25 +135,26 @@ export function renderReflectMoreClarity() {
       lens,
     });
 
-    location.hash = "#/reflect";
+    // ✅ Route forward into Pro Brain (not back into free tools)
+    goProBrain({
+      deepenMode: modeId,
+      deepenLine: line,
+    });
   }
 
   function body() {
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Optional"),
       el("h2", { class: "h2" }, ["One more line"]),
-      el("p", { class: "small" }, ["Tap one. Nothing else."]),
+      el("p", { class: "small" }, ["Tap one line, then Guidance continues from here."]),
       el(
         "div",
         { class: "flowShell", style: "margin-top:10px" },
-        MODES.map((m) =>
-          tile({ label: m.label, hint: m.hint, dot: "dotGreen" }, () => {
-            const line = buildLine(m.id, loop);
-            returnToReflect(m.id, line);
-          })
-        )
+        MODES.map((m) => tile({ label: m.label, hint: m.hint, dot: "dotGreen" }, () => pick(m.id)))
       ),
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
+        // ✅ Allows skipping the extra line but still continuing into the Pro layer
+        el("button", { class: "btn btnPrimary", type: "button", onClick: () => goProBrain() }, ["Guidance"]),
         el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/reflect") }, ["Back to Reflect"]),
       ]),
     ]);
@@ -150,3 +164,4 @@ export function renderReflectMoreClarity() {
   wrap.appendChild(body());
   return wrap;
 }
+```0
