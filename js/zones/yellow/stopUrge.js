@@ -2,7 +2,7 @@
 import { appendLog, setNextIntent } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "SU-16";
+const BUILD = "SU-17";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -257,16 +257,25 @@ export function renderStopUrge() {
     ]);
   }
 
-  function timerPanel() {
-    if (mode === "identify") return null;
+  function idleCard() {
+    if (mode !== "idle") return null;
 
-    if (!running && mode === "idle") {
-      return el("div", { class: "card cardPad" }, [
+    return el("div", {}, [
+      el("div", { class: "card cardPad" }, [
         sectionLabel("Step 2"),
         el("h2", { class: "h2" }, ["Delay the action"]),
-        el("p", { class: "p" }, [`Urge: ${urgeLabel(selectedUrgeType)}`]),
-        el("p", { class: "small", style: "margin-top:8px" }, ["A short window. Don’t act on the urge."]),
-        el("p", { class: "small", style: "margin-top:8px" }, ["Urges rise, peak, and pass. Let this one move through."]),
+        el("p", { class: "small" }, ["You do not have to act on it yet."]),
+      ]),
+      el("div", { class: "card cardPad" }, [
+        sectionLabel("Urge identified"),
+        el("p", { class: "p", style: "font-weight:800;" }, [urgeLabel(selectedUrgeType)]),
+        el("p", { class: "small", style: "margin-top:8px" }, [
+          "Give the urge a short delay window. Let it rise and fall before deciding anything.",
+        ]),
+      ]),
+      el("div", { class: "card cardPad" }, [
+        sectionLabel("Choose a delay"),
+        el("p", { class: "small" }, ["A short window. Don’t act on the urge."]),
         el("div", { class: "btnRow", style: "margin-top:10px" }, [
           el("button", { class: "btn btnPrimary", type: "button", onClick: () => startPause(2) }, ["Start 2 min"]),
           el("button", { class: "btn", type: "button", onClick: () => startPause(5) }, ["Start 5 min"]),
@@ -286,10 +295,12 @@ export function renderStopUrge() {
             ["Back"]
           ),
         ]),
-      ]);
-    }
+      ]),
+    ]);
+  }
 
-    if (!running && mode !== "running") return null;
+  function runningCard() {
+    if (!running || mode !== "running") return null;
 
     return el("div", { class: "card cardPad" }, [
       sectionLabel(`Active • ${durationMin} min`),
@@ -398,8 +409,11 @@ export function renderStopUrge() {
     const identify = identifyCard();
     if (identify) wrap.appendChild(identify);
 
-    const timer = timerPanel();
-    if (timer) wrap.appendChild(timer);
+    const idle = idleCard();
+    if (idle) idle.forEach ? idle.forEach((n) => wrap.appendChild(n)) : wrap.appendChild(idle);
+
+    const runningCardNode = runningCard();
+    if (runningCardNode) wrap.appendChild(runningCardNode);
 
     const chk = checkinCard();
     if (chk) wrap.appendChild(chk);
@@ -412,4 +426,4 @@ export function renderStopUrge() {
 
   rerender();
   return wrap;
-           }
+}
