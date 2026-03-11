@@ -12,7 +12,7 @@
  */
 
 const KEY_MEMORY = "praxis_memory_v1";
-const BUILD = "MEM-02";
+const BUILD = "MEM-03";
 
 // ---------- utils ----------
 function localDayStamp() {
@@ -66,7 +66,7 @@ function normalizeMemory(m) {
   }
 
   return {
-    v: Number.isFinite(v) ? v : 2,
+    v: Number.isFinite(v) ? v : 3,
     build: typeof mem.build === "string" ? mem.build : BUILD,
     createdDay: typeof mem.createdDay === "string" ? mem.createdDay : localDayStamp(),
     updatedDay: typeof mem.updatedDay === "string" ? mem.updatedDay : localDayStamp(),
@@ -76,7 +76,7 @@ function normalizeMemory(m) {
     tools: normObj(mem.tools), // toolName -> count
     daysUsed: normObj(mem.daysUsed), // dayStamp -> count
 
-    // Pro brain aggregates (still safe):
+    // Pro-safe Reflect aggregates
     reflect: {
       loops: normObj(reflect.loops), // loopId -> count
       lenses: normObj(reflect.lenses), // lensId -> count
@@ -87,16 +87,17 @@ function normalizeMemory(m) {
       moreModes: normObj(reflect.moreModes), // modeId -> count
     },
 
+    // Pro-safe Stop the Urge aggregates
     stop: {
       outcomes: normObj(stop.outcomes), // passed|still_present -> count
-      scriptSets: normObj(stop.scriptSets), // neutral|boundary|logistics|deescalate -> count
+      urgeTypes: normObj(stop.urgeTypes), // send|check|buy|argue|boundary|other -> count
     },
   };
 }
 
 function newMemory() {
   return normalizeMemory({
-    v: 2,
+    v: 3,
     build: BUILD,
     createdDay: localDayStamp(),
     updatedDay: localDayStamp(),
@@ -114,12 +115,12 @@ function newMemory() {
     },
     stop: {
       outcomes: {},
-      scriptSets: {},
+      urgeTypes: {},
     },
   });
 }
 
-// Kind → tool bucket (very small, stable)
+// Kind → tool bucket
 function toolFromKind(kind) {
   const k = String(kind || "");
 
@@ -144,7 +145,6 @@ export function resetMemory() {
 }
 
 export function ingestLogEntry(entry) {
-  // entry must already be normalized by storage.js (kind + when)
   const kind = String(entry?.kind || "").trim();
   if (!kind) return;
 
@@ -158,11 +158,10 @@ export function ingestLogEntry(entry) {
   const tool = toolFromKind(kind);
   inc(mem.tools, tool);
 
-  // days used (just counts per day stamp)
+  // days used
   inc(mem.daysUsed, day);
 
-  // -------- reflect aggregates (safe ids only) --------
-  // Reflect lock carries: loop, lens, spiralAsk
+  // -------- reflect aggregates --------
   if (kind === "reflect_lock_v4") {
     const loop = String(entry?.loop || "").trim();
     const lens = String(entry?.lens || "").trim();
@@ -181,24 +180,23 @@ export function ingestLogEntry(entry) {
     if (xa) inc(mem.reflect.lensAsk, xa);
   }
 
-  // Reflect clarify ask event carries: ask
   if (kind === "reflect_spiral_ask_v4") {
     const ask = String(entry?.ask || "").trim();
     if (ask) inc(mem.reflect.asks, ask);
   }
 
-  // More clarity pick carries: mode
   if (kind === "reflect_more_pick_v1") {
     const mode = String(entry?.mode || "").trim();
     if (mode) inc(mem.reflect.moreModes, mode);
   }
 
-  // -------- stop aggregates (safe ids only) --------
+  // -------- stop aggregates --------
   if (kind === "stop_urge") {
     const outcome = String(entry?.outcome || "").trim();
-    const setId = String(entry?.scriptSetId || "").trim();
+    const urgeType = String(entry?.urgeType || "").trim();
+
     if (outcome) inc(mem.stop.outcomes, outcome);
-    if (setId) inc(mem.stop.scriptSets, setId);
+    if (urgeType) inc(mem.stop.urgeTypes, urgeType);
   }
 
   mem.updatedDay = day;
@@ -207,7 +205,7 @@ export function ingestLogEntry(entry) {
   safeWrite(mem);
 }
 
-// Convenience: returns a small snapshot (safe to show in Pro later)
+// Convenience: safe snapshot for Pro
 export function getMemorySnapshot() {
   const mem = getMemory();
   return {
@@ -225,18 +223,17 @@ export function getMemorySnapshot() {
     },
     stop: {
       outcomes: { ...mem.stop.outcomes },
-      scriptSets: { ...mem.stop.scriptSets },
+      urgeTypes: { ...mem.stop.urgeTypes },
     },
   };
 }
 
-// -------- Pro Brain: one-line pattern note (governance-safe) --------
+// -------- Pro Brain: one-line pattern note --------
 function bestPairNote(pairMap, a, b, labelA, labelB, minCount) {
   const k = pairKey(a, b);
   if (!k) return "";
   const n = Number(pairMap?.[k] || 0);
   if (!Number.isFinite(n) || n < minCount) return "";
-  // descriptive, no scoring, no prediction, no “should”
   return `Pattern: ${labelA} + ${labelB} has shown up before.`;
 }
 
@@ -247,10 +244,8 @@ export function getReflectPatternNote({ loopId, lensId, askId } = {}) {
   const lens = String(lensId || "").trim();
   const ask = String(askId || "").trim();
 
-  // Require a little history so we don’t hallucinate patterns on day 1
   const MIN = 3;
 
-  // Prefer the most specific pair available
   if (loop && ask) {
     const note = bestPairNote(mem.reflect.loopAsk, loop, ask, "this loop", "this pull", MIN);
     if (note) return note;
@@ -264,9 +259,8 @@ export function getReflectPatternNote({ loopId, lensId, askId } = {}) {
     if (note) return note;
   }
 
-  // Fallback: simple “you’ve used this tool before” (still safe)
   const usedReflect = Number(mem.tools?.reflect || 0);
   if (usedReflect >= 5) return "Pattern: you return here when intensity is up.";
 
   return "";
-}
+    }
