@@ -4,9 +4,9 @@
  * Public demo does not grant a license to use, copy, modify, or distribute.
  */
 
-import { readLog } from "./storage.js";
+import { readLog, readDailyPraxisState } from "./storage.js";
 
-const BUILD_HOME = "UI-HOME-8";
+const BUILD_HOME = "UI-HOME-9";
 
 // Emergency session marker (set by emergency screen)
 const KEY_LAST_EMERGENCY = "praxis_last_emergency_ts";
@@ -39,7 +39,6 @@ export function setMain(viewNode) {
   if (viewNode) host.appendChild(viewNode);
 }
 
-// ----- minimal safety helpers (non-blocking) -----
 function minutesAgo(iso) {
   if (!iso) return Infinity;
   const t = new Date(iso).getTime();
@@ -72,12 +71,10 @@ function hasRecentEmergencyFromLog() {
 }
 
 function sectionLabel(text) {
-  // Replaces "badge" usage to comply with GOVERNANCE.md UI rules.
   return el("div", { class: "small", style: "opacity:.85;font-weight:700;letter-spacing:.02em;" }, [text]);
 }
 
 function safetyBanner() {
-  // Keep this subtle: only appears if Emergency was opened recently.
   const show = hasRecentEmergencyFromSession() || hasRecentEmergencyFromLog();
   if (!show) return null;
 
@@ -97,7 +94,6 @@ function safetyBanner() {
   ]);
 }
 
-// ----- Home routing tiles -----
 function feelingTile({ label, hint, go, goDot }) {
   return el("button", { class: "actionTile", type: "button", onClick: () => (location.hash = go) }, [
     el("div", { class: "tileTop" }, [
@@ -111,12 +107,11 @@ function feelingTile({ label, hint, go, goDot }) {
 const FEELING_OPTIONS = [
   { label: "I’m not safe / risk is high", hint: "Immediate support.", go: "#/red/emergency", goDot: "dotRed" },
   { label: "Overwhelmed / anxious", hint: "Lower intensity first.", go: "#/yellow/calm", goDot: "dotYellow" },
-  { label: "Urge to act / message / react", hint: "Pause before acting.", go: "#/yellow/stop", goDot: "dotYellow" },
+  { label: "Strong urge to act", hint: "Pause before acting.", go: "#/yellow/stop", goDot: "dotYellow" },
   { label: "Stuck / frozen / restless", hint: "Body first. Then momentum.", go: "#/green/move", goDot: "dotGreen" },
   { label: "I’m okay — I need a plan", hint: "Three steps only.", go: "#/green/today", goDot: "dotGreen" },
 ];
 
-// ----- Tools (minimal, no redundancy) -----
 function toolTile({ title, sub, hint, dot, to }) {
   return el("button", { class: "actionTile", type: "button", onClick: () => (location.hash = to) }, [
     el("div", { class: "tileTop" }, [
@@ -139,7 +134,7 @@ function toolsSection() {
     toolTile({
       title: "Stop the Urge",
       sub: "Pause before acting",
-      hint: "Buy time. Add friction.",
+      hint: "Interrupt the impulse.",
       dot: "dotYellow",
       to: "#/yellow/stop",
     }),
@@ -189,10 +184,64 @@ function toolsSection() {
   ]);
 }
 
+function dailyStepTile({ done, label, hint, go, dot }) {
+  const stateText = done ? "Complete" : "Open";
+  const stateClass = done ? "btn btnPrimary" : "btn";
+
+  return el("div", { class: "card cardPad" }, [
+    sectionLabel(done ? "Complete" : "Today"),
+    el("h3", { class: "h2", style: "margin-top:4px" }, [label]),
+    el("p", { class: "small" }, [hint]),
+    el("div", { class: "btnRow", style: "margin-top:10px" }, [
+      el("button", { class: stateClass, type: "button", onClick: () => (location.hash = go) }, [stateText]),
+      el("div", { class: `zoneDot ${dot}`, style: "align-self:center;" }, []),
+    ]),
+  ]);
+}
+
+function dailyPraxisCard() {
+  const state = readDailyPraxisState();
+  const doneCount = [state.stabilize, state.act, state.plan].filter(Boolean).length;
+  const complete = !!state.completedAt;
+
+  return el("div", { class: "card cardPad" }, [
+    sectionLabel("Today"),
+    el("h2", { class: "h2" }, ["Daily Praxis"]),
+    el("p", { class: "small" }, [
+      complete ? "System steady for today." : `${doneCount} of 3 complete.`,
+    ]),
+    el("div", { class: "flowShell", style: "margin-top:10px" }, [
+      dailyStepTile({
+        done: state.stabilize,
+        label: "Stabilize",
+        hint: "Calm, Stop the Urge, or Emergency.",
+        go: "#/yellow/calm",
+        dot: "dotYellow",
+      }),
+      dailyStepTile({
+        done: state.act,
+        label: "Act",
+        hint: "Move Forward.",
+        go: "#/green/move",
+        dot: "dotGreen",
+      }),
+      dailyStepTile({
+        done: state.plan,
+        label: "Plan",
+        hint: "Today’s Plan.",
+        go: "#/green/today",
+        dot: "dotGreen",
+      }),
+    ]),
+    complete
+      ? el("p", { class: "small", style: "margin-top:10px" }, ["Daily Praxis complete."])
+      : null,
+  ].filter(Boolean));
+}
+
 export function renderHome() {
   const wrap = el("div", { class: "homeShell" });
 
-  // session-only UI toggle
   let showTools = false;
 
   const DEBUG = typeof location !== "undefined" && String(location.search || "").includes("debug=1");
@@ -241,6 +290,7 @@ export function renderHome() {
     const sb = safetyBanner();
     if (sb) wrap.appendChild(sb);
 
+    wrap.appendChild(dailyPraxisCard());
     wrap.appendChild(startCard());
     wrap.appendChild(controlsCard());
 
