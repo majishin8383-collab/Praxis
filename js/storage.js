@@ -19,6 +19,9 @@ const KEY_NEXT_INTENT = "praxis_next_intent_v1";
 // Tier (0=free, 1=pro, 2=plus... whatever you decide later)
 const KEY_TIER = "praxis_tier_v1";
 
+// Daily Praxis loop
+const KEY_DAILY_PRAXIS = "praxis_daily_v1";
+
 // ---------- intent constants (prevents typos across files) ----------
 export const INTENT_TODAY_PREFILL = "today_plan_prefill";
 export const INTENT_TODAY_STEP2 = "today_plan_step2";
@@ -39,7 +42,6 @@ function localDayStamp() {
 
 function normalizeKind(kind) {
   const k = String(kind || "").trim();
-  // Broad aliasing for older builds / experiments.
   const map = {
     // Stop Urge
     stopUrge: "stop_urge",
@@ -75,24 +77,124 @@ function shouldGrantStabilizeCredit(entry) {
   const kind = normalizeKind(entry?.kind);
   if (!kind) return false;
 
-  // Canonical completions
   if (kind === "calm") return true;
   if (kind === "stop_urge") return true;
   if (kind === "move_forward") return true;
 
-  // Timer interactions
   if (kind.startsWith("stop_urge_")) return true;
   if (kind.startsWith("move_forward_")) return true;
 
-  // Calm tool may log calm_start/calm_stop
   if (kind === "calm_start" || kind === "calm_stop") return true;
 
-  // Today’s Plan parity
   if (kind.startsWith("today_plan_step_")) return true;
   if (kind === "today_plan_continue_start") return true;
   if (kind === "today_plan_step") return true;
 
   return false;
+}
+
+// ---------- Daily Praxis ----------
+function newDailyPraxis(day = localDayStamp()) {
+  return {
+    day,
+    stabilize: false,
+    act: false,
+    plan: false,
+    completedAt: "",
+  };
+}
+
+function normalizeDailyPraxis(v) {
+  const raw = v && typeof v === "object" ? v : {};
+  const day = typeof raw.day === "string" && raw.day ? raw.day : localDayStamp();
+
+  return {
+    day,
+    stabilize: !!raw.stabilize,
+    act: !!raw.act,
+    plan: !!raw.plan,
+    completedAt: typeof raw.completedAt === "string" ? raw.completedAt : "",
+  };
+}
+
+export function readDailyPraxisState() {
+  try {
+    const raw = localStorage.getItem(KEY_DAILY_PRAXIS);
+    if (!raw) return newDailyPraxis();
+    const parsed = JSON.parse(raw);
+    const state = normalizeDailyPraxis(parsed);
+
+    if (state.day !== localDayStamp()) {
+      return newDailyPraxis();
+    }
+
+    return state;
+  } catch {
+    return newDailyPraxis();
+  }
+}
+
+function writeDailyPraxisState(state) {
+  try {
+    localStorage.setItem(KEY_DAILY_PRAXIS, JSON.stringify(normalizeDailyPraxis(state)));
+  } catch {}
+}
+
+function markDailyPraxisStep(step) {
+  const valid = step === "stabilize" || step === "act" || step === "plan";
+  if (!valid) return;
+
+  const state = readDailyPraxisState();
+  state[step] = true;
+
+  if (state.stabilize && state.act && state.plan && !state.completedAt) {
+    state.completedAt = nowISO();
+  }
+
+  writeDailyPraxisState(state);
+}
+
+export function resetDailyPraxisState() {
+  writeDailyPraxisState(newDailyPraxis());
+}
+
+export function isDailyPraxisCompleteToday() {
+  const state = readDailyPraxisState();
+  return !!(state.stabilize && state.act && state.plan);
+}
+
+function inferDailyPraxisStep(entry) {
+  const kind = normalizeKind(entry?.kind);
+  if (!kind) return "";
+
+  // Stabilize = Calm / Stop the Urge / Emergency
+  if (
+    kind === "calm" ||
+    kind === "emergency_open" ||
+    kind.startsWith("stop_urge_") ||
+    kind === "stop_urge"
+  ) {
+    return "stabilize";
+  }
+
+  // Act = Move Forward
+  if (
+    kind === "move_forward" ||
+    kind.startsWith("move_forward_")
+  ) {
+    return "act";
+  }
+
+  // Plan = Today Plan
+  if (
+    kind.startsWith("today_plan_step_") ||
+    kind === "today_plan_continue_start" ||
+    kind === "today_plan_step"
+  ) {
+    return "plan";
+  }
+
+  return "";
 }
 
 // ---------- log ----------
@@ -120,7 +222,6 @@ export function appendLog(entry) {
     localStorage.setItem(KEY_LOG, JSON.stringify(log.slice(0, 300)));
   } catch {}
 
-  // ✅ Memory ingest (aggregated counters only). Best-effort.
   try {
     ingestLogEntry(e);
   } catch {}
@@ -129,6 +230,11 @@ export function appendLog(entry) {
     try {
       localStorage.setItem(KEY_STABILIZE_DAY, localDayStamp());
     } catch {}
+  }
+
+  const step = inferDailyPraxisStep(e);
+  if (step) {
+    markDailyPraxisStep(step);
   }
 }
 
@@ -163,15 +269,12 @@ export function getTier() {
     return 0;
   }
 }
+
 export function isPro() {
   return getTier() >= 1;
 }
 
 // ---------- intent handoff ----------
-/**
- * setNextIntent(intent, payload?)
- * - payload is any JSON-safe object.
- */
 export function setNextIntent(intent, payload = null) {
   try {
     const safeIntent = String(intent || "");
@@ -183,24 +286,15 @@ export function setNextIntent(intent, payload = null) {
   } catch {}
 }
 
-/**
- * consumeNextIntent(maxAgeMinutes)
- * Returns:
- * - null if none/expired
- * - string if legacy stored format is encountered
- * - { intent, payload, ts } for new format
- */
 export function consumeNextIntent(maxAgeMinutes = 30) {
   try {
     const raw = localStorage.getItem(KEY_NEXT_INTENT);
     if (!raw) return null;
 
-    // one-time read+clear
     localStorage.removeItem(KEY_NEXT_INTENT);
 
     const parsed = JSON.parse(raw);
 
-    // Legacy string storage
     if (typeof parsed === "string") return parsed;
 
     const intent = parsed?.intent ? String(parsed.intent) : "";
