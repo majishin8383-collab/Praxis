@@ -6,7 +6,7 @@
 
 import { readLog, readDailyPraxisState } from "./storage.js";
 
-const BUILD_HOME = "UI-HOME-9";
+const BUILD_HOME = "UI-HOME-10";
 
 // Emergency session marker (set by emergency screen)
 const KEY_LAST_EMERGENCY = "praxis_last_emergency_ts";
@@ -185,7 +185,7 @@ function toolsSection() {
 }
 
 function dailyStepTile({ done, label, hint, go, dot }) {
-  const stateText = done ? "Complete" : "Open";
+  const stateText = done ? "Complete" : "Start";
   const stateClass = done ? "btn btnPrimary" : "btn";
 
   return el("div", { class: "card cardPad" }, [
