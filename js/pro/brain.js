@@ -6,8 +6,9 @@
 
 // js/pro/brain.js (FULL REPLACEMENT)
 import { appendLog, consumeNextIntent, setNextIntent } from "../storage.js";
+import { getMemorySnapshot } from "../memory.js";
 
-const BUILD = "PB-02";
+const BUILD = "PB-03";
 
 const INTENT_PRO_BRAIN_CONTEXT = "pro_brain_context_v1";
 const INTENT_REFLECT_MORE_CLARITY_RETURN = "reflect_more_clarity_return_v1";
@@ -92,6 +93,72 @@ function buildGuidance(modeId, ctx) {
   }
 }
 
+function topKey(map) {
+  const entries = Object.entries(map || {}).filter(([, n]) => Number(n) > 0);
+  if (!entries.length) return "";
+  entries.sort((a, b) => Number(b[1]) - Number(a[1]));
+  return String(entries[0][0] || "");
+}
+
+function urgeLabel(id) {
+  switch (String(id || "")) {
+    case "send": return "Send / react";
+    case "check": return "Check / reopen";
+    case "buy": return "Buy / spend";
+    case "argue": return "Argue";
+    case "boundary": return "Break a boundary";
+    case "other": return "Something else";
+    default: return "";
+  }
+}
+
+function toolLabel(id) {
+  switch (String(id || "")) {
+    case "calm": return "Calm";
+    case "stop": return "Stop the Urge";
+    case "move": return "Move Forward";
+    case "today": return "Today’s Plan";
+    case "reflect": return "Reflect";
+    case "emergency": return "Emergency";
+    default: return "";
+  }
+}
+
+function patternLines(snapshot, ctx) {
+  const lines = [];
+  if (!snapshot || typeof snapshot !== "object") return lines;
+
+  const daysUsedCount = Number(snapshot.daysUsedCount || 0);
+  const topTool = toolLabel(topKey(snapshot.tools || {}));
+  const topUrge = urgeLabel(topKey(snapshot.stop?.urgeTypes || {}));
+  const topOutcome = topKey(snapshot.stop?.outcomes || {});
+  const topLoop = topKey(snapshot.reflect?.loops || {});
+
+  if (daysUsedCount >= 3) {
+    lines.push(`Pattern: Praxis has been used across ${daysUsedCount} days.`);
+  }
+
+  if (topTool) {
+    lines.push(`Pattern: ${topTool} has shown up most often.`);
+  }
+
+  if (topUrge) {
+    lines.push(`Pattern: ${topUrge} is the most common urge so far.`);
+  }
+
+  if (topOutcome === "passed") {
+    lines.push("Pattern: urges do pass here.");
+  } else if (topOutcome === "still_present") {
+    lines.push("Pattern: some urges need more than one pass.");
+  }
+
+  if (ctx?.loop && topLoop && String(ctx.loop) === String(topLoop)) {
+    lines.push("Pattern: this loop has shown up before.");
+  }
+
+  return lines.slice(0, 3);
+}
+
 export function renderProBrain() {
   const wrap = el("div", { class: "flowShell" });
 
@@ -104,6 +171,8 @@ export function renderProBrain() {
     typeof intent.payload === "object"
       ? intent.payload
       : null;
+
+  const snapshot = getMemorySnapshot();
 
   const state = {
     mode: null,
@@ -217,6 +286,18 @@ export function renderProBrain() {
     ]);
   }
 
+  function patternCard() {
+    const lines = patternLines(snapshot, ctx);
+    if (!lines.length) return null;
+
+    return el("div", { class: "card cardPad" }, [
+      sectionLabel("Pattern noticed"),
+      ...lines.map((t, i) =>
+        el("p", { class: i === 0 ? "p" : "small", style: i === 0 ? "" : "margin-top:6px;opacity:.9;" }, [t])
+      ),
+    ]);
+  }
+
   function lineCard() {
     if (!state.line) return null;
 
@@ -249,6 +330,9 @@ export function renderProBrain() {
     wrap.innerHTML = "";
     wrap.appendChild(header());
     wrap.appendChild(recapCard());
+
+    const pc = patternCard();
+    if (pc) wrap.appendChild(pc);
 
     const lc = lineCard();
     if (lc) wrap.appendChild(lc);
