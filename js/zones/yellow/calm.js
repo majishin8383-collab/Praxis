@@ -1,8 +1,8 @@
 // js/zones/yellow/calm.js (FULL REPLACEMENT)
-import { appendLog, setNextIntent } from "../../storage.js";
+import { appendLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "CALM-9";
+const BUILD = "CALM-10";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -22,6 +22,7 @@ function el(tag, attrs = {}, children = []) {
 }
 
 const nowISO = () => new Date().toISOString();
+
 function safeAppendLog(entry) {
   try {
     appendLog(entry);
@@ -29,7 +30,6 @@ function safeAppendLog(entry) {
 }
 
 function sectionLabel(text) {
-  // Avoid "badge" UI to comply with GOVERNANCE.md
   return el("div", { class: "small", style: "opacity:.85;font-weight:800;letter-spacing:.02em;" }, [text]);
 }
 
@@ -124,28 +124,14 @@ export function renderCalm() {
     rerender();
   }
 
-  function goNextStep() {
-    // Option B: after Stabilize, Today’s Plan should focus Step 2 (Act)
-    // and prefill Step 1 ONLY if it's empty.
-    const label = `${durationMin}-min Calm`;
-    try {
-      setNextIntent("today_plan_prefill", {
-        from: "calm",
-        targetStep: 1,
-        text: label,
-        templateId: "stability",
-        defaultToStep: 2,
-      });
-    } catch {}
-    location.hash = "#/green/today";
-  }
-
   function header() {
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["Calm Me Down"]),
         el("p", { class: "p" }, ["Lower intensity first."]),
-        String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
+        String(location.search || "").includes("debug=1")
+          ? el("div", { class: "small" }, [`Build ${BUILD}`])
+          : null,
       ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
         el("button", {
@@ -208,7 +194,15 @@ export function renderCalm() {
   function closureCard() {
     if (mode !== "stopped" && mode !== "done") return null;
 
-    const stateLine = stoppedEarly ? "Stopping here is allowed." : "Nothing else is required of you right now.";
+    const stateLine = stoppedEarly
+      ? "Stopping here is allowed."
+      : "Nothing else is required of you right now.";
+
+    const reflectBtn = el("button", {
+      class: "btn",
+      type: "button",
+      onClick: () => (location.hash = "#/reflect"),
+    }, ["Reflect"]);
 
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Rest"),
@@ -222,7 +216,7 @@ export function renderCalm() {
             rerender();
           },
         }, ["Run Calm again"]),
-        el("button", { class: "btn", type: "button", onClick: goNextStep }, ["Next step"]),
+        reflectBtn,
         el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
       ]),
     ]);
