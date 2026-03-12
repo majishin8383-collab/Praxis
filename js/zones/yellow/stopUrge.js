@@ -1,8 +1,8 @@
 // js/zones/yellow/stopUrge.js (FULL REPLACEMENT)
-import { appendLog, setNextIntent } from "../../storage.js";
+import { appendLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "SU-17";
+const BUILD = "SU-18";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -201,18 +201,6 @@ export function renderStopUrge() {
       urgeType: selectedUrgeType,
       build: BUILD,
     });
-
-    if (outcome === "passed") {
-      try {
-        setNextIntent("today_plan_prefill", {
-          from: "stop_urge",
-          targetStep: 1,
-          text: `${durationMin}-min Stop the Urge`,
-          templateId: "stability",
-          defaultToStep: 2,
-        });
-      } catch {}
-    }
   }
 
   function header() {
@@ -363,18 +351,15 @@ export function renderStopUrge() {
           ? "The pattern slowed."
           : "A pause happened.";
 
-    const nextStepBtn =
-      lastOutcome === "passed"
-        ? el(
-            "button",
-            {
-              class: "btn",
-              type: "button",
-              onClick: () => (location.hash = "#/green/today"),
-            },
-            ["Next step"]
-          )
-        : null;
+    const nextStepBtn = el(
+      "button",
+      {
+        class: "btn",
+        type: "button",
+        onClick: () => (location.hash = "#/reflect"),
+      },
+      ["Reflect"]
+    );
 
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Relief"),
@@ -398,7 +383,7 @@ export function renderStopUrge() {
         ),
         nextStepBtn,
         el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
-      ].filter(Boolean)),
+      ]),
     ]);
   }
 
@@ -410,7 +395,10 @@ export function renderStopUrge() {
     if (identify) wrap.appendChild(identify);
 
     const idle = idleCard();
-    if (idle) idle.forEach ? idle.forEach((n) => wrap.appendChild(n)) : wrap.appendChild(idle);
+    if (idle) {
+      if (Array.isArray(idle)) idle.forEach((n) => wrap.appendChild(n));
+      else wrap.appendChild(idle);
+    }
 
     const runningCardNode = runningCard();
     if (runningCardNode) wrap.appendChild(runningCardNode);
