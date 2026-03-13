@@ -2,7 +2,7 @@
 import { appendLog, setNextIntent, consumeNextIntent } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "MF-18";
+const BUILD = "MF-19";
 
 // light persistence so "Quick start" feels smart without being complex
 const KEY_LAST = "praxis_move_forward_last_v1";
@@ -52,20 +52,6 @@ function safeAppendLog(entry) {
 
 function sectionLabel(text) {
   return el("div", { class: "small", style: "opacity:.85;font-weight:800;letter-spacing:.02em;" }, [text]);
-}
-
-function getLastLadder() {
-  try {
-    return localStorage.getItem(KEY_LAST) || "";
-  } catch {
-    return "";
-  }
-}
-
-function setLastLadder(id) {
-  try {
-    localStorage.setItem(KEY_LAST, String(id || ""));
-  } catch {}
 }
 
 /**
@@ -127,6 +113,20 @@ const LADDERS = [
 const ACT_PICKS = ["micro_task", "water_light", "clean_3"];
 const MOVE_PICKS = ["walk", "reset_body", "outside_reset"];
 
+function getLastLadder() {
+  try {
+    return localStorage.getItem(KEY_LAST) || "";
+  } catch {
+    return "";
+  }
+}
+
+function setLastLadder(id) {
+  try {
+    localStorage.setItem(KEY_LAST, String(id || ""));
+  } catch {}
+}
+
 function findLadder(id) {
   return LADDERS.find((x) => x.id === id) || LADDERS[0];
 }
@@ -152,17 +152,16 @@ export function renderMoveForward() {
     }
   } catch {}
 
-  // Default selection: last ladder if valid, else first of requested set, else first overall.
   const last = getLastLadder();
   const lastObj = last ? LADDERS.find((l) => l.id === last) : null;
   const lastMatchesFilter = !!(lastObj && (!pickerTpStep || lastObj.tpStep === pickerTpStep));
   let selectedLadderId = lastMatchesFilter
     ? last
     : pickerTpStep === 2
-    ? ACT_PICKS[0]
-    : pickerTpStep === 3
-    ? MOVE_PICKS[0]
-    : ACT_PICKS[0];
+      ? ACT_PICKS[0]
+      : pickerTpStep === 3
+        ? MOVE_PICKS[0]
+        : ACT_PICKS[0];
 
   // timer state
   let running = false;
@@ -172,7 +171,7 @@ export function renderMoveForward() {
   let tick = null;
 
   // UI state (normal landing only)
-  let showMovePicks = false; // ✅ collapsed by default
+  let showMovePicks = false;
 
   // bookkeeping
   let stoppedEarly = false;
@@ -215,7 +214,6 @@ export function renderMoveForward() {
     location.hash = "#/green/today";
   }
 
-  // ✅ Picker mode should immediately overwrite & return to Today Plan.
   function selectAndAdvance(id) {
     selectedLadderId = id;
     setLastLadder(id);
@@ -231,14 +229,12 @@ export function renderMoveForward() {
   }
 
   function maybeGrantStep3Credit(ladder) {
-    // Only “Move” ladders should unlock Step 3
     if (ladder.tpStep === 3) grantStep3CreditToday();
   }
 
   function startSelected() {
     const ladder = findLadder(selectedLadderId);
 
-    // If they start a “Move” ladder, unlock Step 3 in Today Plan
     maybeGrantStep3Credit(ladder);
 
     running = true;
@@ -265,7 +261,6 @@ export function renderMoveForward() {
         stopTick();
         running = false;
 
-        // reinforce credit on completion
         maybeGrantStep3Credit(ladder);
 
         safeAppendLog({
@@ -300,7 +295,6 @@ export function renderMoveForward() {
     stoppedEarly = true;
     elapsedSec = Math.max(0, Math.round(elapsedMs / 1000));
 
-    // reinforce credit even on early stop
     maybeGrantStep3Credit(ladder);
 
     safeAppendLog({
@@ -323,14 +317,16 @@ export function renderMoveForward() {
       pickerTpStep === 2
         ? "Pick an Act ladder for Today’s Plan Step 2."
         : pickerTpStep === 3
-        ? "Pick a Move ladder for Today’s Plan Step 3."
-        : "Act first. Move if needed.";
+          ? "Pick a Move ladder for Today’s Plan Step 3."
+          : "Act first. Move if needed.";
 
     return el("div", { class: "flowHeader" }, [
       el("div", {}, [
         el("h1", { class: "h1" }, ["Move Forward"]),
         el("p", { class: "p" }, [sub]),
-        String(location.search || "").includes("debug=1") ? el("div", { class: "small" }, [`Build ${BUILD}`]) : null,
+        String(location.search || "").includes("debug=1")
+          ? el("div", { class: "small" }, [`Build ${BUILD}`])
+          : null,
       ].filter(Boolean)),
       el("div", { class: "flowMeta" }, [
         el("button", { class: "linkBtn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
@@ -436,7 +432,9 @@ export function renderMoveForward() {
       sectionLabel(`Active • ${durationMin} min`),
       el("div", { class: "timerBox" }, [
         el("div", { class: "timerReadout", "data-timer-readout": "1" }, [formatMMSS(remainingMs())]),
-        el("div", { class: "btnRow" }, [el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"])]),
+        el("div", { class: "btnRow" }, [
+          el("button", { class: "btn", type: "button", onClick: stopEarly }, ["Stop"]),
+        ]),
       ]),
     ]);
   }
@@ -445,6 +443,7 @@ export function renderMoveForward() {
     if (mode !== "closed") return null;
     const ladder = findLadder(selectedLadderId);
     const line = stoppedEarly ? `Window closed (${elapsedSec}s).` : "Window closed.";
+
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Next step"),
       el("p", { class: "p" }, [line]),
@@ -475,4 +474,4 @@ export function renderMoveForward() {
 
   rerender();
   return wrap;
-}
+        }
