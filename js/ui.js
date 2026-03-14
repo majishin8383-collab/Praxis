@@ -6,7 +6,7 @@
 
 import { readLog, readDailyPraxisState } from "./storage.js";
 
-const BUILD_HOME = "UI-HOME-11";
+const BUILD_HOME = "UI-HOME-12";
 
 // Emergency session marker (set by emergency screen)
 const KEY_LAST_EMERGENCY = "praxis_last_emergency_ts";
@@ -167,7 +167,7 @@ function toolsSection() {
   return el("div", {}, [
     el("div", { class: "card cardPad" }, [
       sectionLabel("Tools"),
-      el("p", { class: "small" }, ["Use only if needed."]),
+      el("p", { class: "small" }, ["Optional support tools."]),
     ]),
 
     el("div", { class: "card cardPad" }, [
@@ -206,7 +206,7 @@ function dailyPraxisCard() {
 
   return el("div", { class: "card cardPad" }, [
     sectionLabel("Today"),
-    el("h2", { class: "h2" }, ["Daily Praxis"]),
+    el("h2", { class: "h2" }, ["Today’s Praxis"]),
     el("p", { class: "small" }, [
       complete ? "3 of 3 complete." : `${doneCount} of 3 complete.`,
     ]),
@@ -287,8 +287,8 @@ export function renderHome() {
     const sb = safetyBanner();
     if (sb) wrap.appendChild(sb);
 
-    wrap.appendChild(dailyPraxisCard());
     wrap.appendChild(startCard());
+    wrap.appendChild(dailyPraxisCard());
     wrap.appendChild(controlsCard());
 
     if (showTools) wrap.appendChild(toolsSection());
@@ -296,4 +296,4 @@ export function renderHome() {
 
   rerender();
   return wrap;
-}
+      }
