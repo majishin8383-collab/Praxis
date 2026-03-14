@@ -6,7 +6,7 @@
 
 import { readLog, readDailyPraxisState } from "./storage.js";
 
-const BUILD_HOME = "UI-HOME-13";
+const BUILD_HOME = "UI-HOME-14";
 
 // Emergency session marker (set by emergency screen)
 const KEY_LAST_EMERGENCY = "praxis_last_emergency_ts";
@@ -236,6 +236,51 @@ function dailyPraxisCard() {
   ]);
 }
 
+function progressPill({ done, current, label, dot }) {
+  let text = label;
+  if (done) text = `✓ ${label}`;
+  else if (current) text = `→ ${label}`;
+
+  const style =
+    "padding:8px 10px;border:1px solid var(--line);border-radius:999px;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;opacity:" +
+    (done || current ? "1" : ".72") +
+    ";";
+
+  return el("div", { style }, [
+    el("div", { class: `zoneDot ${dot}`, style: "width:10px;height:10px;min-width:10px;min-height:10px;" }, []),
+    el("span", {}, [text]),
+  ]);
+}
+
+function progressRow(state) {
+  const currentStep =
+    !state.stabilize ? "stabilize" :
+    !state.act ? "act" :
+    !state.plan ? "plan" :
+    "";
+
+  return el("div", { style: "display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;" }, [
+    progressPill({
+      done: !!state.stabilize,
+      current: currentStep === "stabilize",
+      label: "Stabilize",
+      dot: "dotYellow",
+    }),
+    progressPill({
+      done: !!state.act,
+      current: currentStep === "act",
+      label: "Act",
+      dot: "dotGreen",
+    }),
+    progressPill({
+      done: !!state.plan,
+      current: currentStep === "plan",
+      label: "Plan",
+      dot: "dotGreen",
+    }),
+  ]);
+}
+
 function continueCard() {
   const state = readDailyPraxisState();
 
@@ -246,6 +291,7 @@ function continueCard() {
       sectionLabel("Continue"),
       el("h2", { class: "h2" }, ["You stabilized earlier."]),
       el("p", { class: "small" }, ["Continue with action."]),
+      progressRow(state),
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
         el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/green/move") }, ["Move Forward"]),
         el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/today") }, ["Today’s Plan"]),
@@ -258,6 +304,7 @@ function continueCard() {
       sectionLabel("Continue"),
       el("h2", { class: "h2" }, ["You already took action."]),
       el("p", { class: "small" }, ["Set direction for the rest of today."]),
+      progressRow(state),
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
         el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/green/today") }, ["Today’s Plan"]),
       ]),
@@ -269,6 +316,7 @@ function continueCard() {
       sectionLabel("Today"),
       el("h2", { class: "h2" }, ["Today’s Praxis is complete."]),
       el("p", { class: "small" }, ["Start from your current state if you need another pass."]),
+      progressRow(state),
     ]);
   }
 
