@@ -6,7 +6,7 @@
 
 import { readLog, readDailyPraxisState } from "./storage.js";
 
-const BUILD_HOME = "UI-HOME-12";
+const BUILD_HOME = "UI-HOME-13";
 
 // Emergency session marker (set by emergency screen)
 const KEY_LAST_EMERGENCY = "praxis_last_emergency_ts";
@@ -236,6 +236,45 @@ function dailyPraxisCard() {
   ]);
 }
 
+function continueCard() {
+  const state = readDailyPraxisState();
+
+  if (!state?.stabilize) return null;
+
+  if (state.stabilize && !state.act) {
+    return el("div", { class: "card cardPad" }, [
+      sectionLabel("Continue"),
+      el("h2", { class: "h2" }, ["You stabilized earlier."]),
+      el("p", { class: "small" }, ["Continue with action."]),
+      el("div", { class: "btnRow", style: "margin-top:10px" }, [
+        el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/green/move") }, ["Move Forward"]),
+        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/green/today") }, ["Today’s Plan"]),
+      ]),
+    ]);
+  }
+
+  if (state.act && !state.plan) {
+    return el("div", { class: "card cardPad" }, [
+      sectionLabel("Continue"),
+      el("h2", { class: "h2" }, ["You already took action."]),
+      el("p", { class: "small" }, ["Set direction for the rest of today."]),
+      el("div", { class: "btnRow", style: "margin-top:10px" }, [
+        el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/green/today") }, ["Today’s Plan"]),
+      ]),
+    ]);
+  }
+
+  if (state.completedAt) {
+    return el("div", { class: "card cardPad" }, [
+      sectionLabel("Today"),
+      el("h2", { class: "h2" }, ["Today’s Praxis is complete."]),
+      el("p", { class: "small" }, ["Start from your current state if you need another pass."]),
+    ]);
+  }
+
+  return null;
+}
+
 export function renderHome() {
   const wrap = el("div", { class: "homeShell" });
 
@@ -287,6 +326,9 @@ export function renderHome() {
     const sb = safetyBanner();
     if (sb) wrap.appendChild(sb);
 
+    const cc = continueCard();
+    if (cc) wrap.appendChild(cc);
+
     wrap.appendChild(startCard());
     wrap.appendChild(dailyPraxisCard());
     wrap.appendChild(controlsCard());
@@ -296,4 +338,4 @@ export function renderHome() {
 
   rerender();
   return wrap;
-      }
+}
