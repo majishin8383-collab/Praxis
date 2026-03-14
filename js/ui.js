@@ -6,7 +6,7 @@
 
 import { readLog, readDailyPraxisState } from "./storage.js";
 
-const BUILD_HOME = "UI-HOME-10";
+const BUILD_HOME = "UI-HOME-11";
 
 // Emergency session marker (set by emergency screen)
 const KEY_LAST_EMERGENCY = "praxis_last_emergency_ts";
@@ -167,7 +167,7 @@ function toolsSection() {
   return el("div", {}, [
     el("div", { class: "card cardPad" }, [
       sectionLabel("Tools"),
-      el("p", { class: "small" }, ["Only what you need. No duplicates."]),
+      el("p", { class: "small" }, ["Use only if needed."]),
     ]),
 
     el("div", { class: "card cardPad" }, [
@@ -185,11 +185,11 @@ function toolsSection() {
 }
 
 function dailyStepTile({ done, label, hint, go, dot }) {
-  const stateText = done ? "Complete" : "Start";
+  const stateText = done ? "Done" : "Start";
   const stateClass = done ? "btn btnPrimary" : "btn";
 
   return el("div", { class: "card cardPad" }, [
-    sectionLabel(done ? "Complete" : "Today"),
+    sectionLabel("Today"),
     el("h3", { class: "h2", style: "margin-top:4px" }, [label]),
     el("p", { class: "small" }, [hint]),
     el("div", { class: "btnRow", style: "margin-top:10px" }, [
@@ -208,13 +208,13 @@ function dailyPraxisCard() {
     sectionLabel("Today"),
     el("h2", { class: "h2" }, ["Daily Praxis"]),
     el("p", { class: "small" }, [
-      complete ? "System steady for today." : `${doneCount} of 3 complete.`,
+      complete ? "3 of 3 complete." : `${doneCount} of 3 complete.`,
     ]),
     el("div", { class: "flowShell", style: "margin-top:10px" }, [
       dailyStepTile({
         done: state.stabilize,
         label: "Stabilize",
-        hint: "Calm, Stop the Urge, or Emergency.",
+        hint: "Lower intensity first.",
         go: "#/yellow/calm",
         dot: "dotYellow",
       }),
@@ -233,10 +233,7 @@ function dailyPraxisCard() {
         dot: "dotGreen",
       }),
     ]),
-    complete
-      ? el("p", { class: "small", style: "margin-top:10px" }, ["Daily Praxis complete."])
-      : null,
-  ].filter(Boolean));
+  ]);
 }
 
 export function renderHome() {
@@ -276,10 +273,10 @@ export function renderHome() {
               rerender();
             },
           },
-          [showTools ? "Hide tools" : "Show tools"]
+          [showTools ? "Hide advanced tools" : "Advanced tools"]
         ),
       ]),
-      el("p", { class: "small", style: "margin-top:8px" }, ["Default is simple. Tools are optional."]),
+      el("p", { class: "small", style: "margin-top:8px" }, ["Default is simple. Advanced tools are optional."]),
     ]);
   }
 
