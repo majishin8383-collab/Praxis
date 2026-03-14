@@ -2,7 +2,7 @@
 import { appendLog, readLog, isPro, setNextIntent, consumeNextIntent } from "../storage.js";
 import { getReflectPatternNote } from "../memory.js";
 
-const BUILD = "RF-21"; // governance locked: tap-only, low demand, hard closure
+const BUILD = "RF-22"; // governance locked: tap-only, low demand, hard closure
 
 // DEV: keep More clarity visible during development.
 // PRE-SHIP: set to false to gate behind isPro().
@@ -56,7 +56,7 @@ function tile({ label, hint, dot = "dotGreen" }, onClick) {
 // Step 1: what's looping
 const LOOP_OPTIONS = [
   { id: "me", label: "Something I said / did", hint: "I keep replaying my side." },
-  { id: "them", label: "Something someone said / did", hint: "I’m stuck on what it meant." }, // softened
+  { id: "them", label: "Something someone said / did", hint: "I’m stuck on what it meant." },
   { id: "decision", label: "A decision I’m avoiding", hint: "I don’t want to choose." },
   { id: "future", label: "Fear of what happens next", hint: "My brain is predicting." },
   { id: "tension", label: "Unnamed tension", hint: "I feel off, can’t name it." },
@@ -74,7 +74,7 @@ const LENSES = [
 // Clarify: what the spiral is asking for
 const SPIRAL_ASKS = [
   { id: "recheck", label: "Re-check / re-read", hint: "Looking again to feel sure." },
-  { id: "reach", label: "Reach out / contact", hint: "Trying to close the loop." }, // softened
+  { id: "reach", label: "Reach out / contact", hint: "Trying to close the loop." },
   { id: "replay", label: "Replay / analyze", hint: "Searching for meaning." },
   { id: "fix", label: "Fix / explain", hint: "Trying to repair it." },
   { id: "predict", label: "Predict / catastrophize", hint: "Future scanning." },
@@ -154,7 +154,6 @@ export function renderReflect() {
 
   safeAppendLog({ kind: "reflect_open_v4", when: nowISO(), build: BUILD });
 
-  // ✅ Consume one-time return from More Clarity (if present)
   (function consumeReturn() {
     const intent = consumeNextIntent();
     if (!intent || typeof intent !== "object") return;
@@ -170,8 +169,6 @@ export function renderReflect() {
 
     state.deepenLine = line;
     state.deepenMode = mode;
-
-    // return lands in closure
     state.step = 3;
 
     safeAppendLog({
@@ -284,11 +281,8 @@ export function renderReflect() {
             state.release = r.release;
 
             state.closure = "REST";
-
             state.spiralAsk = null;
             state.spiralLine = "";
-
-            // clear any prior deepen line when a new reflection is generated
             state.deepenMode = null;
             state.deepenLine = "";
 
@@ -346,7 +340,6 @@ export function renderReflect() {
 
       state.spiralLine ? el("p", { class: "small", style: "margin-top:10px;opacity:.9;" }, [state.spiralLine]) : null,
       state.deepenLine ? el("p", { class: "small", style: "margin-top:10px;opacity:.9;" }, [state.deepenLine]) : null,
-
       pattern ? el("p", { class: "small", style: "margin-top:10px;opacity:.9;" }, [pattern]) : null,
 
       el("p", { class: "small", style: "margin-top:8px" }, ["Nothing else is required right now."]),
@@ -367,6 +360,15 @@ export function renderReflect() {
 
       el("div", { class: "btnRow", style: "margin-top:10px" }, [
         el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, ["Back to Home"]),
+        el(
+          "button",
+          {
+            class: "btn",
+            type: "button",
+            onClick: () => (location.hash = "#/green/move"),
+          },
+          ["Move Forward"]
+        ),
         el(
           "button",
           {
@@ -434,4 +436,4 @@ export function renderReflect() {
 
   rerender();
   return wrap;
-          }
+}
