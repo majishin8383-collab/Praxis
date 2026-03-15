@@ -2,7 +2,7 @@
 import { appendLog, setNextIntent, consumeNextIntent } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "MF-19";
+const BUILD = "MF-20";
 
 // light persistence so "Quick start" feels smart without being complex
 const KEY_LAST = "praxis_move_forward_last_v1";
@@ -197,7 +197,7 @@ export function renderMoveForward() {
    * Prefill rule:
    * - Act ladders => fill Step 2, focus Step 2
    * - Move ladders => fill Step 3, focus Step 3
-   * Always overwrite in Today Plan (TP-23).
+   * Always overwrite in Today Plan.
    */
   function goTodayWithPrefill(ladder, { advanceDone = false } = {}) {
     const step = ladder.tpStep === 3 ? 3 : 2;
@@ -441,15 +441,36 @@ export function renderMoveForward() {
 
   function closureCard() {
     if (mode !== "closed") return null;
+
     const ladder = findLadder(selectedLadderId);
-    const line = stoppedEarly ? `Window closed (${elapsedSec}s).` : "Window closed.";
+    const title = stoppedEarly ? "Stopping here is allowed." : "You took action.";
+    const sub = stoppedEarly
+      ? "Return home or set direction if you're ready."
+      : "Set direction for the rest of today if you're ready.";
 
     return el("div", { class: "card cardPad" }, [
       sectionLabel("Next step"),
-      el("p", { class: "p" }, [line]),
-      el("div", { class: "btnRow" }, [
-        el("button", { class: "btn btnPrimary", type: "button", onClick: () => goTodayWithPrefill(ladder, { advanceDone: true }) }, ["Today’s Plan"]),
-        el("button", { class: "btn", type: "button", onClick: () => { mode = "pick"; rerender(); } }, ["Run again"]),
+      el("p", { class: "p" }, [title]),
+      el("p", { class: "small", style: "margin-top:8px" }, [sub]),
+      el("div", { class: "btnRow", style: "margin-top:10px" }, [
+        el("button", {
+          class: "btn btnPrimary",
+          type: "button",
+          onClick: () => goTodayWithPrefill(ladder, { advanceDone: true }),
+        }, ["Today’s Plan"]),
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => (location.hash = "#/home"),
+        }, ["Return Home"]),
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => {
+            mode = "pick";
+            rerender();
+          },
+        }, ["Run again"]),
       ]),
     ]);
   }
@@ -474,4 +495,4 @@ export function renderMoveForward() {
 
   rerender();
   return wrap;
-        }
+           }
