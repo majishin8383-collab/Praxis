@@ -2,7 +2,7 @@
 import { appendLog } from "../../storage.js";
 import { formatMMSS, clamp } from "../../components/timer.js";
 
-const BUILD = "CALM-10";
+const BUILD = "CALM-11";
 
 function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
@@ -194,30 +194,32 @@ export function renderCalm() {
   function closureCard() {
     if (mode !== "stopped" && mode !== "done") return null;
 
-    const stateLine = stoppedEarly
-      ? "Stopping here is allowed."
-      : "Nothing else is required of you right now.";
-
-    const reflectBtn = el("button", {
-      class: "btn",
-      type: "button",
-      onClick: () => (location.hash = "#/reflect"),
-    }, ["Reflect"]);
+    const title = stoppedEarly ? "Stopping here is allowed." : "You stabilized your state.";
+    const sub = stoppedEarly ? "Return home or continue if you're ready." : "Continue with action if you're ready.";
 
     return el("div", { class: "card cardPad" }, [
-      sectionLabel("Rest"),
-      el("p", { class: "p" }, [stateLine]),
-      el("div", { class: "btnRow" }, [
+      sectionLabel("Next step"),
+      el("p", { class: "p" }, [title]),
+      el("p", { class: "small", style: "margin-top:8px" }, [sub]),
+      el("div", { class: "btnRow", style: "margin-top:10px" }, [
         el("button", {
           class: "btn btnPrimary",
+          type: "button",
+          onClick: () => (location.hash = "#/green/move"),
+        }, ["Move Forward"]),
+        el("button", {
+          class: "btn",
+          type: "button",
+          onClick: () => (location.hash = "#/home"),
+        }, ["Return Home"]),
+        el("button", {
+          class: "btn",
           type: "button",
           onClick: () => {
             mode = "idle";
             rerender();
           },
         }, ["Run Calm again"]),
-        reflectBtn,
-        el("button", { class: "btn", type: "button", onClick: () => (location.hash = "#/home") }, ["Reset"]),
       ]),
     ]);
   }
