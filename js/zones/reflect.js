@@ -2,7 +2,7 @@
 import { appendLog, readLog, isPro, setNextIntent, consumeNextIntent } from "../storage.js";
 import { getReflectPatternNote } from "../memory.js";
 
-const BUILD = "RF-22"; // governance locked: tap-only, low demand, hard closure
+const BUILD = "RF-23"; // governance locked: tap-only, low demand, hard closure
 
 // DEV: keep More clarity visible during development.
 // PRE-SHIP: set to false to gate behind isPro().
@@ -344,26 +344,11 @@ export function renderReflect() {
 
       el("p", { class: "small", style: "margin-top:8px" }, ["Nothing else is required right now."]),
 
-      el("div", { style: "margin-top:10px" }, [
-        tile(
-          { label: "Re-check / re-read", hint: "If that pull is present, name it once.", dot: "dotGreen" },
-          () => {
-            state.spiralAsk = "recheck";
-            state.spiralLine = askLine("recheck");
-            saveSpiralAsk();
-            saveLock();
-            rerender();
-            window.scrollTo(0, 0);
-          }
-        ),
-      ]),
-
-      el("div", { class: "btnRow", style: "margin-top:10px" }, [
-        el("button", { class: "btn btnPrimary", type: "button", onClick: () => (location.hash = "#/home") }, ["Back to Home"]),
+      el("div", { class: "btnRow", style: "margin-top:12px" }, [
         el(
           "button",
           {
-            class: "btn",
+            class: "btn btnPrimary",
             type: "button",
             onClick: () => (location.hash = "#/green/move"),
           },
@@ -374,29 +359,11 @@ export function renderReflect() {
           {
             class: "btn",
             type: "button",
-            onClick: () => {
-              state.step = 1;
-              state.loop = null;
-              state.lens = null;
-              state.mirror = "";
-              state.ground = "";
-              state.release = "";
-              state.closure = "REST";
-              state.spiralAsk = null;
-              state.spiralLine = "";
-              state.deepenMode = null;
-              state.deepenLine = "";
-              rerender();
-              window.scrollTo(0, 0);
-            },
+            onClick: () => (location.hash = "#/home"),
           },
-          ["Reflect again"]
+          ["Home"]
         ),
-        el("button", { class: "btn", type: "button", onClick: () => setStep(4) }, ["Clarify the spiral"]),
-        canShowMoreClarity()
-          ? el("button", { class: "btn", type: "button", onClick: goMoreClarity }, ["More clarity"])
-          : null,
-      ].filter(Boolean)),
+      ]),
     ].filter(Boolean));
   }
 
